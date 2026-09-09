@@ -1,4 +1,5 @@
 agent/opencode/
+.claude/skills/
 packages/schema/gen/
 pnpm-lock.yaml
 uv.lock
