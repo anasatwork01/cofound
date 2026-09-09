@@ -41,7 +41,7 @@ check-branch: ## Validate the current branch name against CONTRIBUTING.md
 	@./scripts/check-branch.sh
 
 .PHONY: verify
-verify: structure lint typecheck test build ## Everything CI runs except integration
+verify: structure gen-check lint typecheck test build ## Everything CI runs except integration
 
 .PHONY: structure
 structure: ## Assert the repo layout matches SPEC §4
@@ -124,9 +124,25 @@ fmt: ## Auto-format everything
 	pnpm run format
 
 .PHONY: gen
-gen: ## Regenerate cross-language types from packages/schema (task 0.3)
-	@echo "not implemented - see docs/TASKS.md task 0.3"
-	@exit 1
+gen: ## Regenerate TypeScript, Go and Python from packages/schema
+	@./scripts/gen.sh
+
+.PHONY: gen-check
+gen-check: ## Fail if the checked-in bindings disagree with the schemas
+	@./scripts/gen.sh >/dev/null
+# Compares regenerated output against what is checked in, which means the
+# working tree against the index rather than against HEAD. Using `git status`
+# here would reject a schema change staged together with its own regenerated
+# output — the correct shape for such a commit.
+	@if ! git diff --quiet -- packages/schema/gen || \
+	    [ -n "$$(git ls-files --others --exclude-standard -- packages/schema/gen)" ]; then \
+		echo "  generated bindings are stale."; \
+		echo "  Run 'make gen' and commit the result alongside the schema change."; \
+		git diff --stat -- packages/schema/gen; \
+		git ls-files --others --exclude-standard -- packages/schema/gen | sed 's/^/  untracked: /'; \
+		exit 1; \
+	fi
+	@echo "  generated bindings match the schemas"
 
 .PHONY: clean
 clean: ## Remove build output

@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schema.halyard.dev/v0/common.schema.json",
+  "title": "Common",
+  "description": "Primitives shared across every Halyard contract. $id values are stable identifiers, not URLs to fetch. Derived from SPEC sections 6, 8, 10 and 18.\n\nThe definitions live in $defs and are aliased under components/schemas. This is not redundancy: JSON Schema generators address them as #/$defs/X, while oapi-codegen only accepts depth-4 pointers and rejects #/$defs/X outright. The aliases are one-line $refs, so there is still exactly one definition of each type and the OpenAPI files reuse the very same generated Go types via -import-mapping.",
+  "$defs": {
+    "Uuid": {
+      "title": "Uuid",
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "Timestamp": {
+      "title": "Timestamp",
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339, always UTC. Ads reporting is timezone-bound per account (SPEC 19.4) and converts at the edge of the system, never in storage."
+    },
+    "Slug": {
+      "title": "Slug",
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+      "maxLength": 63,
+      "description": "Lowercase, DNS-label safe: a project slug reaches a preview hostname (SPEC 9)."
+    },
+    "GitSha": {
+      "title": "GitSha",
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,40}$",
+      "description": "Full or abbreviated. SPEC 18 demotes these in the UI but never hides them."
+    },
+    "Credits": {
+      "title": "Credits",
+      "type": "string",
+      "pattern": "^-?[0-9]{1,10}([.][0-9]{1,4})?$",
+      "description": "A decimal string, not a number. The control plane stores credits as numeric(14,4) (SPEC 6) and SPEC 16.1 requires a ledger rather than a counter; routing money through an IEEE-754 double loses that exactness silently. Negative values are legal: SPEC 16.1 allows a bounded negative float rather than killing a running turn."
+    },
+    "Role": {
+      "title": "Role",
+      "enum": ["owner", "admin", "editor", "viewer"],
+      "description": "SPEC 8. Approving anything that spends money requires owner or admin."
+    },
+    "ActorKind": {
+      "title": "ActorKind",
+      "enum": ["user", "agent", "system", "external"],
+      "description": "SPEC 6 timeline_events and audit_log."
+    },
+    "Error": {
+      "title": "Error",
+      "type": "object",
+      "description": "SPEC 10 requires a structured error the UI can render as a human-readable message rather than a raw git error, and SPEC 18 requires errors to say what happened and how to fix it, without apologising. `fix` is that second half, and is separate from `message` so the UI can present it as an action.",
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Stable, machine-readable. Clients branch on this, never on `message`."
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What happened, in the interface's voice."
+        },
+        "fix": {
+          "type": "string",
+          "description": "What the reader can do about it. Omitted only when nothing can be."
+        },
+        "retriable": {
+          "type": "boolean",
+          "description": "Whether repeating the identical request could succeed."
+        },
+        "details": {
+          "type": "object",
+          "description": "Code-specific context. Never contains a secret value (SPEC 17.2)."
+        },
+        "request_id": {
+          "type": "string",
+          "description": "For correlating with traces and support requests."
+        }
+      },
+      "required": ["code", "message", "retriable"],
+      "additionalProperties": false
+    },
+    "ErrorResponse": {
+      "title": "ErrorResponse",
+      "type": "object",
+      "properties": {
+        "error": {
+          "$ref": "#/$defs/Error"
+        }
+      },
+      "required": ["error"],
+      "additionalProperties": false
+    },
+    "Page": {
+      "title": "Page",
+      "type": "object",
+      "description": "Cursor pagination. Offsets skip or duplicate rows when the underlying list changes, which it constantly does for timelines and ledgers.",
+      "properties": {
+        "next_cursor": {
+          "type": ["string", "null"],
+          "description": "Opaque. Null when this is the last page."
+        },
+        "has_more": {
+          "type": "boolean"
+        }
+      },
+      "required": ["has_more"],
+      "additionalProperties": false
+    }
+  },
+  "components": {
+    "schemas": {
+      "Uuid": {
+        "$ref": "#/$defs/Uuid"
+      },
+      "Timestamp": {
+        "$ref": "#/$defs/Timestamp"
+      },
+      "Slug": {
+        "$ref": "#/$defs/Slug"
+      },
+      "GitSha": {
+        "$ref": "#/$defs/GitSha"
+      },
+      "Credits": {
+        "$ref": "#/$defs/Credits"
+      },
+      "Role": {
+        "$ref": "#/$defs/Role"
+      },
+      "ActorKind": {
+        "$ref": "#/$defs/ActorKind"
+      },
+      "Error": {
+        "$ref": "#/$defs/Error"
+      },
+      "ErrorResponse": {
+        "$ref": "#/$defs/ErrorResponse"
+      },
+      "Page": {
+        "$ref": "#/$defs/Page"
+      }
+    }
+  }
+}

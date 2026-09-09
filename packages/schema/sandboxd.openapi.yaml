@@ -1,0 +1,169 @@
+openapi: 3.1.0
+
+info:
+  title: sandboxd
+  version: 0.1.0
+  description: |
+    The internal interface between the Go control plane and the Python sandbox
+    orchestrator. SPEC 3.2 requires this file to exist and both the Go client
+    and the FastAPI models to be generated from it, because it is the one
+    boundary where the two-language split would otherwise drift.
+
+    Not public. Reached over mTLS or a private network with bearer tokens
+    (SPEC 3.2). Nothing here is exposed to a sandbox: a sandbox talks to gitd,
+    aigw and mcp, never to its own orchestrator.
+
+servers:
+  - url: http://sandboxd.internal
+    description: Private network. Never routable from a sandbox or the internet.
+
+paths:
+  /sessions:
+    post:
+      operationId: createSession
+      summary: Acquire a sandbox for a project branch
+      description: |
+        SPEC 9 lifecycle. Looks for a warm sandbox matching the template image,
+        creates one from the pre-baked image with the project's volume mounted
+        on a miss, reconciles the working tree to the branch head, then starts
+        agentd.
+
+        Returns before the sandbox is `live`: time to first preview is an SLO
+        (SPEC 17.3, p50 < 10s) and the caller streams progress rather than
+        blocking on it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSessionRequest" }
+      responses:
+        "202":
+          description: Sandbox is starting. Poll or subscribe for readiness.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "409":
+          description: |
+            A session already holds this project. SPEC 19.4: v1 refuses the
+            second with a clear message rather than corrupting the tree.
+          content:
+            application/json:
+              schema: { $ref: "./common.schema.json#/components/schemas/ErrorResponse" }
+        "429":
+          description: Org is at its plan's concurrent-sandbox limit (SPEC 9).
+          content:
+            application/json:
+              schema: { $ref: "./common.schema.json#/components/schemas/ErrorResponse" }
+
+  /sessions/{sessionId}:
+    parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema: { $ref: "./common.schema.json#/components/schemas/Uuid" }
+    get:
+      operationId: getSession
+      summary: Current state of a session
+      responses:
+        "200":
+          description: Session state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "404":
+          description: Unknown session.
+          content:
+            application/json:
+              schema: { $ref: "./common.schema.json#/components/schemas/ErrorResponse" }
+    delete:
+      operationId: stopSession
+      summary: Snapshot the filesystem and stop the sandbox
+      description: |
+        SPEC 9 step 7. The Modal Volume is kept: the next session for this
+        project resumes from it rather than reinstalling dependencies.
+      responses:
+        "204": { description: Stopped. }
+        "404":
+          description: Unknown session.
+          content:
+            application/json:
+              schema: { $ref: "./common.schema.json#/components/schemas/ErrorResponse" }
+
+  /healthz:
+    get:
+      operationId: health
+      summary: Liveness
+      responses:
+        "200":
+          description: Process is up.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+components:
+  schemas:
+    CreateSessionRequest:
+      type: object
+      properties:
+        org_id: { $ref: "./common.schema.json#/components/schemas/Uuid" }
+        project_id: { $ref: "./common.schema.json#/components/schemas/Uuid" }
+        branch: { type: string, minLength: 1 }
+        template_image:
+          type: string
+          minLength: 1
+          description: Pre-baked image for the project's template version (SPEC 9 step 2).
+        head_sha:
+          $ref: "./common.schema.json#/components/schemas/GitSha"
+        quotas: { $ref: "#/components/schemas/SessionQuotas" }
+      required: [org_id, project_id, branch, template_image]
+      additionalProperties: false
+
+    Session:
+      type: object
+      properties:
+        session_id: { $ref: "./common.schema.json#/components/schemas/Uuid" }
+        sandbox_id:
+          type: string
+          description: Modal's identifier. Opaque to the control plane.
+        state: { $ref: "#/components/schemas/SessionState" }
+        tunnel_url:
+          type: [string, "null"]
+          format: uri
+          description: |
+            Registered against <branch>.<project>.preview.<domain> in Workers KV
+            (SPEC 9 step 5). Null until the dev server is listening. Never
+            handed to a browser unsigned — SPEC 14.3 gates preview URLs behind
+            a signed cookie, because an unlisted URL is not access control.
+        warm:
+          type: boolean
+          description: Whether this came from the warm pool. The single biggest lever on perceived quality (SPEC 9), so it is measured.
+        started_at: { $ref: "./common.schema.json#/components/schemas/Timestamp" }
+      required: [session_id, state, warm, started_at]
+      additionalProperties: false
+
+    SessionState:
+      title: SessionState
+      enum: [starting, live, idle, stopped, failed]
+      description: Mirrors sessions.state in SPEC 6.
+
+    SessionQuotas:
+      type: object
+      description: |
+        SPEC 9. Hard limits, enforced in agentd and again in aigw — the sandbox
+        is untrusted, so a limit checked only inside it is not a limit.
+        Omitted fields take the platform default.
+      properties:
+        wall_clock_seconds_per_turn: { type: integer, minimum: 1, default: 600 }
+        tokens_per_turn: { type: integer, minimum: 1, default: 400000 }
+        tokens_per_session: { type: integer, minimum: 1, default: 4000000 }
+        vcpu: { type: number, minimum: 0.1, default: 2 }
+        memory_mb: { type: integer, minimum: 256, default: 4096 }
+      additionalProperties: false
+
+    Health:
+      type: object
+      properties:
+        status: { title: HealthStatus, enum: [ok, degraded] }
+        version: { type: string }
+      required: [status]
+      additionalProperties: false

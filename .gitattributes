@@ -10,4 +10,7 @@
 pnpm-lock.yaml linguist-generated=true -diff
 uv.lock         linguist-generated=true -diff
 go.sum          linguist-generated=true -diff
-packages/schema/gen/** linguist-generated=true -diff
+# linguist-generated collapses these in a GitHub pull request. `-diff` is
+# deliberately absent: `make gen-check` reports drift as a diff, and a
+# reviewer needs to be able to read it.
+packages/schema/gen/** linguist-generated=true

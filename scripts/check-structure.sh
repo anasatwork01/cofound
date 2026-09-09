@@ -21,6 +21,13 @@ required_files=(
   .tool-versions .gitignore .editorconfig
   README.md CONTRIBUTING.md CLAUDE.md
   compose.yaml .github/workflows/ci.yml
+  scripts/gen.sh
+  packages/schema/common.schema.json
+  packages/schema/agent-events.schema.json
+  packages/schema/capability-manifest.schema.json
+  packages/schema/meters.schema.json
+  packages/schema/sandboxd.openapi.yaml
+  packages/schema/api.openapi.yaml
   scripts/doctor.sh scripts/check-structure.sh scripts/check-branch.sh
   scripts/tool-versions.sh
   .githooks/pre-push

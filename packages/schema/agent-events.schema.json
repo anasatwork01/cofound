@@ -1,0 +1,322 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schema.halyard.dev/v0/agent-events.schema.json",
+  "title": "AgentEvent",
+  "description": "The agent event stream defined in SPEC 7.2. agentd emits these and api relays them over SSE with a monotonic id for Last-Event-ID resume.\n\nTwo rules this schema cannot express, which every decoder must honour:\n  1. Unknown `type` values are ignored, not fatal (SPEC 7.2, 18). Objects      therefore permit additional properties: a newer producer must not      break an older consumer. Decode the envelope first, then the variant.\n  2. usage.tick is advisory. Billing reads usage_events, never this stream.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/TurnStarted"
+    },
+    {
+      "$ref": "#/$defs/MessageDelta"
+    },
+    {
+      "$ref": "#/$defs/ToolStarted"
+    },
+    {
+      "$ref": "#/$defs/ToolFinished"
+    },
+    {
+      "$ref": "#/$defs/LeaseChanged"
+    },
+    {
+      "$ref": "#/$defs/PreviewStatus"
+    },
+    {
+      "$ref": "#/$defs/UsageTick"
+    },
+    {
+      "$ref": "#/$defs/TurnFinished"
+    },
+    {
+      "$ref": "#/$defs/ErrorEvent"
+    }
+  ],
+  "$defs": {
+    "TurnStarted": {
+      "title": "TurnStarted",
+      "type": "object",
+      "description": "SPEC 16.1 reserve-then-settle: the hold is placed before work starts, at the p75 estimate.",
+      "properties": {
+        "type": {
+          "title": "TurnStartedType",
+          "enum": ["turn.started"]
+        },
+        "turn": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "SPEC 7.2: every event carries the turn it belongs to."
+        },
+        "hold": {
+          "title": "Hold",
+          "type": "object",
+          "properties": {
+            "credits": {
+              "$ref": "common.schema.json#/$defs/Credits"
+            }
+          },
+          "required": ["credits"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["type", "turn", "hold"]
+    },
+    "MessageDelta": {
+      "title": "MessageDelta",
+      "type": "object",
+      "description": "An incremental chunk of assistant prose. Concatenate in `id` order; SPEC 18 renders these optimistically.",
+      "properties": {
+        "type": {
+          "title": "MessageDeltaType",
+          "enum": ["message.delta"]
+        },
+        "turn": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "SPEC 7.2: every event carries the turn it belongs to."
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": ["type", "turn", "text"]
+    },
+    "ToolStarted": {
+      "title": "ToolStarted",
+      "type": "object",
+      "description": "SPEC 18 appends these to the current turn card as they arrive.",
+      "properties": {
+        "type": {
+          "title": "ToolStartedType",
+          "enum": ["tool.started"]
+        },
+        "turn": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "SPEC 7.2: every event carries the turn it belongs to."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Correlates with the matching tool.finished."
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "description": "What the tool acts on \u2014 a repo-relative path for file tools."
+        }
+      },
+      "required": ["type", "turn", "id", "tool"]
+    },
+    "ToolFinished": {
+      "title": "ToolFinished",
+      "type": "object",
+      "description": "diff_stat is present only for tools that changed the working tree.",
+      "properties": {
+        "type": {
+          "title": "ToolFinishedType",
+          "enum": ["tool.finished"]
+        },
+        "turn": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "SPEC 7.2: every event carries the turn it belongs to."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "diff_stat": {
+          "title": "DiffStat",
+          "type": "object",
+          "properties": {
+            "add": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "del": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": ["add", "del"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["type", "turn", "id", "ok"]
+    },
+    "LeaseChanged": {
+      "title": "LeaseChanged",
+      "type": "object",
+      "description": "SPEC 18: when the agent holds the lease the editor goes read-only with a visible banner, never a silently rejecting editor.",
+      "properties": {
+        "type": {
+          "title": "LeaseChangedType",
+          "enum": ["lease.changed"]
+        },
+        "turn": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "SPEC 7.2: every event carries the turn it belongs to."
+        },
+        "holder": {
+          "title": "LeaseHolder",
+          "enum": ["agent", "human", "none"]
+        }
+      },
+      "required": ["type", "turn", "holder"]
+    },
+    "PreviewStatus": {
+      "title": "PreviewStatus",
+      "type": "object",
+      "description": "Preview lifecycle. SPEC 17.3 tracks rebuild-after-edit at p95 < 8s.",
+      "properties": {
+        "type": {
+          "title": "PreviewStatusType",
+          "enum": ["preview.status"]
+        },
+        "turn": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "SPEC 7.2: every event carries the turn it belongs to."
+        },
+        "state": {
+          "title": "PreviewState",
+          "enum": ["starting", "rebuilding", "ready", "failed"]
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Signed preview URL. SPEC 14.3: an unlisted URL is not access control."
+        }
+      },
+      "required": ["type", "turn", "state"]
+    },
+    "UsageTick": {
+      "title": "UsageTick",
+      "type": "object",
+      "description": "SPEC 7.2: advisory for the UI, authoritative only once reconciled server-side. Never bill from this event.",
+      "properties": {
+        "type": {
+          "title": "UsageTickType",
+          "enum": ["usage.tick"]
+        },
+        "turn": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "SPEC 7.2: every event carries the turn it belongs to."
+        },
+        "tokens": {
+          "title": "TokenUsage",
+          "type": "object",
+          "description": "Four separate counts, never one total. SPEC 16.2: they differ by roughly an order of magnitude in cost, and a combined meter misprices heavy sessions.",
+          "properties": {
+            "in": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "out": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cache_read": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cache_write": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": ["in", "out", "cache_read", "cache_write"],
+          "additionalProperties": false
+        },
+        "sandbox_seconds": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "required": ["type", "turn", "tokens", "sandbox_seconds"]
+    },
+    "TurnFinished": {
+      "title": "TurnFinished",
+      "type": "object",
+      "description": "Mirrors turns.status in SPEC 6. checkpoint_sha is absent when the turn changed no files.",
+      "properties": {
+        "type": {
+          "title": "TurnFinishedType",
+          "enum": ["turn.finished"]
+        },
+        "turn": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "SPEC 7.2: every event carries the turn it belongs to."
+        },
+        "status": {
+          "title": "TurnStatus",
+          "enum": ["done", "failed", "aborted", "budget_exceeded"]
+        },
+        "checkpoint_sha": {
+          "$ref": "common.schema.json#/$defs/GitSha"
+        },
+        "credits": {
+          "$ref": "common.schema.json#/$defs/Credits"
+        }
+      },
+      "required": ["type", "turn", "status"]
+    },
+    "ErrorEvent": {
+      "title": "ErrorEvent",
+      "type": "object",
+      "description": "Turn-scoped failure. Transport-level failures surface as an SSE disconnect instead.",
+      "properties": {
+        "type": {
+          "title": "ErrorEventType",
+          "enum": ["error"]
+        },
+        "turn": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "SPEC 7.2: every event carries the turn it belongs to."
+        },
+        "code": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retriable": {
+          "type": "boolean"
+        }
+      },
+      "required": ["type", "turn", "code", "message", "retriable"]
+    },
+    "AgentEventEnvelope": {
+      "title": "AgentEventEnvelope",
+      "type": "object",
+      "description": "The fields SPEC 7.2 requires on every event. Decode this first to route or relay an event without needing to know its variant \u2014 which is how a relay stays forward-compatible with event types it has never heard of.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "turn": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": ["type", "turn"]
+    }
+  }
+}

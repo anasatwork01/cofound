@@ -1,0 +1,248 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schema.halyard.dev/v0/capability-manifest.schema.json",
+  "title": "CapabilityManifest",
+  "type": "object",
+  "description": "SPEC 7.4. Every field here appears in that section's worked example; nothing is invented.\n\nTwo invariants the installer must uphold and this schema cannot express (SPEC 7.4, 13.1): installation is idempotent, so re-running is a no-op; and it is removable, so files and env go while data tables stay with a warning. A failed smoke_check rolls the whole install back as one unit.\n\nEnums appear where SPEC enumerates the values. Where SPEC shows one member of an obviously open set \u2014 provision.kind, provision.completion \u2014 the field is a patterned string instead, because inventing the rest of the enum would violate SPEC 0 rule 5 and force a churn commit later.",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Primary key in SPEC 6 capabilities. v1 catalogue (SPEC 13.2): auth, payments, email, uploads, slack, ai."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z.-]+)?$",
+      "description": "Semver. Installs resolve a pinned version (SPEC 13.1 step 1), never a range."
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "string",
+      "description": "One line for the catalogue. SPEC 6 capabilities.summary."
+    },
+    "status": {
+      "title": "CapabilityStatus",
+      "enum": ["available", "beta", "coming_soon"],
+      "description": "SPEC 6 capabilities.status."
+    },
+    "framework": {
+      "type": "object",
+      "description": "Compatibility ranges checked against the project before install (SPEC 13.1 step 1). Keyed by framework name; SPEC 7.4 shows {\"next\": \">=15 <16\"}.",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minProperties": 1
+    },
+    "credential_owner": {
+      "title": "CredentialOwner",
+      "enum": ["none", "builder", "runtime"],
+      "description": "SPEC 6 and 13.2. `builder` means the project owner connects their own account, so one credential lives in our secret store. `runtime` means each end user of the generated app connects their own, which needs a token table in the app's database, callback routes, per-app encryption and refresh handling. SPEC 13.2: ship builder-time only in v1."
+    },
+    "provision": {
+      "title": "Provision",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "What backing resource to create. SPEC 7.4 shows `stripe_connect`; SPEC 13.2 implies app-database tables, a sending domain, an R2 bucket and workspace OAuth."
+        },
+        "completion": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "How provisioning finishes when it cannot finish synchronously. SPEC 7.4 shows `hosted_onboarding`, which surfaces as project_capabilities.state = needs_action."
+        },
+        "produces": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "description": "Keys this step writes into project_capabilities.external_refs (SPEC 6)."
+        }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    "dependencies": {
+      "type": "object",
+      "description": "npm packages added to the project, name to semver range.",
+      "propertyNames": {
+        "pattern": "^(@[a-z0-9-~][a-z0-9-._~]*/)?[a-z0-9-~][a-z0-9-._~]*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "title": "ManifestFile",
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Repo-relative destination."
+          },
+          "template": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Template file within the capability module."
+          },
+          "on_conflict": {
+            "title": "OnConflict",
+            "enum": ["skip", "overwrite"],
+            "description": "What to do when `path` already exists. SPEC 7.4 uses `skip` for route handlers the user may have edited and `overwrite` for generated library glue."
+          }
+        },
+        "required": ["path", "template", "on_conflict"],
+        "additionalProperties": false
+      }
+    },
+    "migrations": {
+      "type": "array",
+      "items": {
+        "title": "ManifestMigration",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9]{4}_[a-z0-9_]+$"
+          },
+          "sql": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additive": {
+            "type": "boolean",
+            "description": "SPEC 12.5: a migration that dropped a column cannot be undone by adding a commit, so capability migrations must be additive. `false` requires an approved proposals row before it runs."
+          }
+        },
+        "required": ["id", "sql", "additive"],
+        "additionalProperties": false
+      }
+    },
+    "env": {
+      "type": "array",
+      "items": {
+        "title": "ManifestEnv",
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          },
+          "scope": {
+            "title": "EnvScope",
+            "enum": ["public", "server"],
+            "description": "SPEC 17.2: a `server` value must never reach the client bundle."
+          },
+          "from": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Where the value comes from, e.g. `provision.secret_key`."
+          },
+          "dev_variant": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "SPEC 13.1 step 4 and 17.1: development scope gets this variant, so only a test-mode key ever reaches a sandbox. A prompt injection that exfiltrates a sandbox environment then burns a test key."
+          }
+        },
+        "required": ["key", "scope", "from"],
+        "additionalProperties": false
+      }
+    },
+    "webhooks": {
+      "type": "array",
+      "items": {
+        "title": "ManifestWebhook",
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "relay_path": {
+            "type": "string",
+            "pattern": "^/relay/\\{project\\}/[a-z][a-z0-9_]*$",
+            "description": "SPEC 13.3: third-party webhooks cannot target a sandbox tunnel whose URL changes each session, so they hit a stable relay that forwards to whichever preview is live and queues with replay when none is."
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          }
+        },
+        "required": ["provider", "relay_path", "events"],
+        "additionalProperties": false
+      }
+    },
+    "smoke_check": {
+      "description": "SPEC 13.1 step 5: run against the preview after install. Failure rolls the whole install back as one unit. Modelled as a union so a new kind is an additive change.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/HttpSmokeCheck"
+        }
+      ]
+    },
+    "uninstall": {
+      "title": "Uninstall",
+      "type": "object",
+      "properties": {
+        "remove_files": {
+          "type": "boolean"
+        },
+        "remove_env": {
+          "type": "boolean"
+        },
+        "drop_tables": {
+          "type": "boolean",
+          "description": "SPEC 7.4 and 13.1: data tables stay with a warning. `true` is a destructive migration and needs an approved proposal (SPEC 12.5)."
+        }
+      },
+      "required": ["remove_files", "remove_env", "drop_tables"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["id", "version", "display_name", "framework", "credential_owner", "uninstall"],
+  "additionalProperties": false,
+  "$defs": {
+    "HttpSmokeCheck": {
+      "title": "HttpSmokeCheck",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "title": "HttpSmokeCheckKind",
+          "enum": ["http"]
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "method": {
+          "title": "HttpMethod",
+          "enum": ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+        },
+        "expect_status": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        }
+      },
+      "required": ["kind", "path", "method", "expect_status"],
+      "additionalProperties": false
+    }
+  }
+}

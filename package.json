@@ -12,6 +12,8 @@
     "format": "prettier --write ."
   },
   "devDependencies": {
+    "json-schema-to-typescript": "^16.0.0",
+    "openapi-typescript": "^7.13.0",
     "prettier": "^3.3.3"
   }
 }

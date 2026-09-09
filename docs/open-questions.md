@@ -21,6 +21,34 @@ task 0.9 cannot start without.
 
 ---
 
+## Q1 - SPEC §7.2's examples contradict its own prose
+
+Found while deriving `agent-events.schema.json` and pinned by
+`tests/contracts/test_schemas.py::test_spec_7_2_examples_as_written_expose_two_deviations`,
+so neither can be forgotten or silently "fixed".
+
+**1. Three examples omit `turn`.** §7.2 states as a rule that _every event
+carries `turn`_, but the `lease.changed`, `preview.status` and `error` examples
+have no `turn` field. The schema follows the normative sentence and requires it,
+which means those three examples need correcting — or the rule needs relaxing to
+"every turn-scoped event". Worth deciding deliberately: `lease.changed` and
+`preview.status` are arguably session-scoped rather than turn-scoped, in which
+case the rule is wrong rather than the examples.
+
+**2. Credits appear as JSON numbers.** `{"hold": {"credits": 40}}` and
+`"credits": 31`. The schema types credits as a decimal string, because SPEC §6
+stores them as `numeric(14,4)` and §16.1 requires a ledger rather than a
+counter — routing money through an IEEE-754 double loses that exactness
+silently, and §16.5's nightly reconciliation is exactly where such losses would
+surface as unexplained drift. If credits are instead meant to be integral at the
+API boundary (§16.6 says never display fractions), say so and the type becomes
+an integer; either is defensible, but the two spellings in §7.2 and §6 cannot
+both be right.
+
+**Owner:** human. **Blocks:** nothing today; phase 1 consumes both.
+
+---
+
 ## Blocking decisions (SPEC §21) - needed before phase 1
 
 | #   | Decision                                                                                                    | Owner | Blocks    | Notes                                                                                                                                                                                                   |
