@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Installed by `make bootstrap` (git config core.hooksPath .githooks).
+#
+# Enforces the two conventions in CONTRIBUTING.md that are cheapest to catch
+# here rather than in review: main is protected, and work branches are named.
+# `git push --no-verify` bypasses this; if you need it, say why in the PR.
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+zero="0000000000000000000000000000000000000000"
+
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue          # branch deletion
+  branch="${remote_ref#refs/heads/}"
+
+  if [ "$branch" = "main" ]; then
+    cat >&2 <<MSG
+
+  Refusing to push directly to main.
+
+  main is protected: changes reach it through a pull request.
+
+    git switch -c feature/<name>     # or fix/<name>, update/<name>
+    git push -u origin feature/<name>
+
+  See CONTRIBUTING.md.
+
+MSG
+    exit 1
+  fi
+
+  "$repo_root/scripts/check-branch.sh" "$branch" >/dev/null || exit 1
+done

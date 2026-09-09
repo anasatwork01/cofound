@@ -12,10 +12,23 @@ breakdown and current status.
 ```bash
 mise install          # or: nvm use && asdf install   (see .tool-versions)
 make doctor           # verify your toolchain
-make bootstrap        # install JS, Python and Go dependencies
+make bootstrap        # install JS, Python and Go dependencies, plus git hooks
 make verify           # what CI runs: structure, lint, typecheck, test, build
 make help             # all targets
 ```
+
+## Contributing
+
+`main` is protected. Branch, verify, push, open a pull request:
+
+```bash
+git switch -c feature/0.2-ci-pipeline    # or fix/<name>, update/<name>
+make verify                              # must pass before you push
+git push -u origin feature/0.2-ci-pipeline
+```
+
+Full conventions — branch naming, commit format, what needs an explicit note in
+the PR body — are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Layout
 
