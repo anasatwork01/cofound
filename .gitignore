@@ -20,9 +20,6 @@ coverage/
 htmlcov/
 *.tsbuildinfo
 
-# --- generated code (regenerate with `make gen`, never edit by hand) ---
-packages/schema/gen/
-
 # --- local environment ---
 .env
 .env.*

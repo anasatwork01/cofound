@@ -98,6 +98,42 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: make lint-js
 
+  schema:
+    name: schema drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: tv
+        run: ./scripts/tool-versions.sh >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ steps.tv.outputs.golang }}
+          cache-dependency-path: "**/go.sum"
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ steps.tv.outputs.pnpm }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ steps.tv.outputs.nodejs }}
+          cache: pnpm
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: ${{ steps.tv.outputs.python }}
+          enable-cache: true
+          cache-suffix: schema
+      - run: pnpm install --frozen-lockfile
+      - run: uv sync --all-packages --locked
+
+      # Regenerates from the schemas and fails if the committed bindings differ.
+      # This is the whole point of committing generated output: without it,
+      # "generated from the schema" is a claim nobody checks.
+      - run: make gen-check
+
+      # A schema can generate Go that does not compile — an unresolved external
+      # $ref becomes a missing import rather than a generator error.
+      - run: go build ./...
+        working-directory: packages/schema/gen/go
+
   integration:
     name: integration (postgres + redis)
     runs-on: ubuntu-latest
@@ -147,7 +183,7 @@ jobs:
   ci:
     name: ci
     if: always()
-    needs: [meta, go, python, js, integration]
+    needs: [meta, go, python, js, schema, integration]
     runs-on: ubuntu-latest
     steps:
       # A single required status check for branch protection: adding a job above

@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schema.halyard.dev/v0/meters.schema.json",
+  "title": "Metering",
+  "description": "Metering and rating contracts from SPEC 16. The central rule (SPEC 16.1) is that units and prices are separate: emitters write units into usage_events and only the rating worker converts them to credits, stamping the price book version on every charge so a support question about a past invoice is answerable exactly.",
+  "$defs": {
+    "Meter": {
+      "title": "Meter",
+      "enum": [
+        "tokens_in",
+        "tokens_out",
+        "tokens_cache_read",
+        "tokens_cache_write",
+        "sandbox_seconds",
+        "build",
+        "deploy",
+        "egress_gb",
+        "requests",
+        "db_storage_gb",
+        "db_compute_seconds",
+        "ai_gateway_tokens",
+        "seo_crawl_pages",
+        "keyword_lookup",
+        "rank_check",
+        "domain_year"
+      ],
+      "description": "SPEC 16.2. The four token meters stay separate deliberately."
+    },
+    "Unit": {
+      "title": "Unit",
+      "enum": ["tokens", "seconds", "count", "gigabytes", "gigabyte_months", "years"],
+      "description": "What one unit of a meter's quantity measures."
+    },
+    "MeterClass": {
+      "title": "MeterClass",
+      "enum": ["build", "runtime", "passthrough"],
+      "description": "SPEC 16.3 gives build and runtime different exhaustion behaviours: build pauses the builder, which is harmless because the user is at the keyboard, while runtime follows a policy ladder because the spend is driven by someone else's end users. `passthrough` is billed at cost and shown as its own line so it does not look like margin (SPEC 16.2, domain_year).\n\nClassification lives in price book data rather than in this enum because it is a commercial decision, not a type."
+    },
+    "EventSource": {
+      "title": "EventSource",
+      "enum": ["agentd", "sandboxd", "aigw", "worker", "edge"],
+      "description": "SPEC 6 usage_events.source."
+    },
+    "PriceBookItem": {
+      "title": "PriceBookItem",
+      "type": "object",
+      "properties": {
+        "unit": {
+          "$ref": "#/$defs/Unit"
+        },
+        "credits_per_unit": {
+          "type": "string",
+          "pattern": "^[0-9]{1,10}([.][0-9]{1,10})?$",
+          "description": "Decimal string, for the same exactness reason as Credits. More fractional digits than Credits because a per-token price is very small while a charge is not."
+        },
+        "meter_class": {
+          "$ref": "#/$defs/MeterClass"
+        }
+      },
+      "required": ["unit", "credits_per_unit", "meter_class"],
+      "additionalProperties": false
+    },
+    "PriceBook": {
+      "title": "PriceBook",
+      "type": "object",
+      "description": "SPEC 6 price_books. Versioned and immutable once effective: every charge stamps the version it was rated under.",
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effective_from": {
+          "$ref": "common.schema.json#/$defs/Timestamp"
+        },
+        "items": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/Meter"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/PriceBookItem"
+          },
+          "description": "Keyed by meter. A meter with no entry is not billable under this version, which is different from being priced at zero."
+        }
+      },
+      "required": ["version", "effective_from", "items"],
+      "additionalProperties": false
+    },
+    "UsageEvent": {
+      "title": "UsageEvent",
+      "type": "object",
+      "description": "SPEC 6 usage_events. Carries units only \u2014 never credits. The unique (source, event_key) pair makes emission idempotent, which is what lets a crashed emitter retry without double-charging (SPEC 17.2).",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/EventSource"
+        },
+        "event_key": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Idempotency key chosen by the emitter, unique within its source."
+        },
+        "org_id": {
+          "$ref": "common.schema.json#/$defs/Uuid"
+        },
+        "project_id": {
+          "$ref": "common.schema.json#/$defs/Uuid"
+        },
+        "meter": {
+          "$ref": "#/$defs/Meter"
+        },
+        "quantity": {
+          "type": "string",
+          "pattern": "^[0-9]{1,14}([.][0-9]{1,6})?$",
+          "description": "numeric(20,6) in SPEC 6; a decimal string for the same reason as Credits."
+        },
+        "occurred_at": {
+          "$ref": "common.schema.json#/$defs/Timestamp"
+        }
+      },
+      "required": ["source", "event_key", "org_id", "meter", "quantity", "occurred_at"],
+      "additionalProperties": false
+    }
+  }
+}
