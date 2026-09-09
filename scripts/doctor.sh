@@ -49,7 +49,17 @@ fi
 check go     "$(go version 2>/dev/null | awk '{print $3}' | tr -d go)" "$(want golang)"
 check node   "$(node --version 2>/dev/null | tr -d v)"                 "$(want nodejs)"
 check pnpm   "$(pnpm --version 2>/dev/null)"                           "$(want pnpm)"
-check python "$(python3 --version 2>/dev/null | awk '{print $2}')"     "$(want python)"
+# The interpreter that matters is the one uv resolves for this project, not
+# whatever `python3` happens to be on PATH. They differ in CI: setup-uv installs
+# the pinned Python into its own directory and sets UV_PYTHON, leaving the
+# runner's older system python3 first on PATH. Checking python3 there measures
+# an interpreter nothing in this repo ever runs.
+project_python=""
+if command -v uv >/dev/null 2>&1; then
+  project_python="$(uv python find 2>/dev/null || true)"
+fi
+[ -x "$project_python" ] || project_python="$(command -v python3 || true)"
+check python "$("$project_python" --version 2>/dev/null | awk '{print $2}')"     "$(want python)"
 check uv     "$(uv --version 2>/dev/null | awk '{print $2}')"          "0.4.0"
 check git    "$(git --version 2>/dev/null | awk '{print $3}')"         "2.40.0"
 check docker "$(docker --version 2>/dev/null | awk '{print $3}' | tr -d ,)" "24.0.0"

@@ -85,6 +85,7 @@ jobs:
         with:
           python-version: ${{ steps.tv.outputs.python }}
           enable-cache: true
+          cache-suffix: python
       - run: uv sync --all-packages --locked
       - run: make lint-py
       - run: make typecheck-py
@@ -147,6 +148,7 @@ jobs:
         with:
           python-version: ${{ steps.tv.outputs.python }}
           enable-cache: true
+          cache-suffix: integration
       - run: uv sync --all-packages --locked
       # pytest exits 5 when it collects nothing, so a harness that silently
       # stopped running these tests fails the job instead of reporting green.
