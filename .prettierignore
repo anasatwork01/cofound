@@ -1,0 +1,7 @@
+agent/opencode/
+packages/schema/gen/
+pnpm-lock.yaml
+uv.lock
+.next/
+.open-next/
+dist/

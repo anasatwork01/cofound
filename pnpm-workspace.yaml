@@ -1,0 +1,5 @@
+# agent/opencode is a git submodule with its own (bun) workspace and is
+# deliberately excluded from ours.
+packages:
+  - "apps/*"
+  - "packages/*"

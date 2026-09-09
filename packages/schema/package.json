@@ -1,0 +1,9 @@
+{
+  "name": "@halyard/schema",
+  "version": "0.0.0",
+  "private": true,
+  "description": "JSON Schema + OpenAPI: the single source of truth for all cross-language types",
+  "scripts": {
+    "typecheck": "echo \"not implemented yet\""
+  }
+}

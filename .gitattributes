@@ -1,0 +1,13 @@
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+
+pnpm-lock.yaml linguist-generated=true -diff
+uv.lock         linguist-generated=true -diff
+go.sum          linguist-generated=true -diff
+packages/schema/gen/** linguist-generated=true -diff

@@ -1,0 +1,46 @@
+[project]
+name = "halyard"
+version = "0.0.0"
+description = "Halyard control plane - Python services workspace root"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["services/sandboxd", "services/workers"]
+
+[dependency-groups]
+# Runtime dependencies (fastapi, modal, asyncpg, google-ads, facebook-business,
+# playwright) are added by the task that first needs them, after the relevant
+# SPEC §22 fact is verified. Only tooling is pinned here.
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["agent/opencode", "packages/schema/gen"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "A", "C4", "ASYNC", "S", "RUF"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+exclude = ["agent/opencode", "packages/schema/gen"]
+
+[tool.pytest.ini_options]
+testpaths = ["services/sandboxd/tests", "services/workers/tests"]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers --import-mode=importlib"

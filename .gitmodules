@@ -1,0 +1,3 @@
+[submodule "agent/opencode"]
+	path = agent/opencode
+	url = https://github.com/anomalyco/opencode.git

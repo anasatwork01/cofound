@@ -1,0 +1,52 @@
+# --- dependencies ---
+node_modules/
+.pnpm-store/
+.venv/
+__pycache__/
+*.py[cod]
+.uv-cache/
+
+# --- build output ---
+dist/
+build/
+.next/
+out/
+.open-next/
+.turbo/
+bin/
+*.test
+coverage/
+.coverage
+htmlcov/
+*.tsbuildinfo
+
+# --- generated code (regenerate with `make gen`, never edit by hand) ---
+packages/schema/gen/
+
+# --- local environment ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!**/testdata/**/*.pem
+
+# --- tool caches ---
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.wrangler/
+.dev.vars
+
+# --- editors / os ---
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+
+# --- local infra state ---
+infra/**/.terraform/
+infra/**/*.tfstate
+infra/**/*.tfstate.*
+tmp/
