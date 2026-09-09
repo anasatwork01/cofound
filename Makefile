@@ -20,10 +20,19 @@ doctor: ## Check the local toolchain against .tool-versions
 	@./scripts/doctor.sh
 
 .PHONY: bootstrap
-bootstrap: doctor ## Install all dependencies (JS, Python, Go)
+bootstrap: doctor hooks ## Install all dependencies (JS, Python, Go) and git hooks
 	pnpm install
 	uv sync --all-packages
 	go work sync
+
+.PHONY: hooks
+hooks: ## Install the repo's git hooks (see .githooks/)
+	@git config core.hooksPath .githooks
+	@echo "  git hooks -> .githooks (pre-push: protects main, validates branch names)"
+
+.PHONY: check-branch
+check-branch: ## Validate the current branch name against CONTRIBUTING.md
+	@./scripts/check-branch.sh
 
 .PHONY: verify
 verify: structure lint typecheck test build ## Everything CI runs

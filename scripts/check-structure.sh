@@ -19,6 +19,9 @@ required_dirs=(
 required_files=(
   go.work pyproject.toml package.json pnpm-workspace.yaml Makefile
   .tool-versions .gitignore .editorconfig
+  README.md CONTRIBUTING.md CLAUDE.md
+  scripts/doctor.sh scripts/check-structure.sh scripts/check-branch.sh
+  .githooks/pre-push
   docs/SPEC.md docs/TASKS.md docs/verified.md docs/open-questions.md
 )
 
