@@ -30,10 +30,36 @@ check() {
 }
 
 echo "toolchain:"
+
+# A hardcoded GOROOT export survives a Go upgrade and then breaks every single
+# go command with "cannot find GOROOT directory" — an error that looks nothing
+# like its cause, and which makes the version probe below report "MISSING go".
+# Name it explicitly so nobody loses an afternoon to it.
+if [ -n "${GOROOT:-}" ] && [ ! -d "$GOROOT" ]; then
+  red "  BROKEN   GOROOT is set to $GOROOT, which does not exist"
+  echo "           A Go upgrade moved it. Unset GOROOT: the go binary locates its"
+  echo "           own runtime, so the variable is unnecessary and version-fragile."
+  echo "           Check your shell profile for a hardcoded 'export GOROOT=...'."
+  fail=1
+elif ! go version >/dev/null 2>&1; then
+  red "  BROKEN   go is on PATH but does not run: $(go version 2>&1 | head -1)"
+  fail=1
+fi
+
 check go     "$(go version 2>/dev/null | awk '{print $3}' | tr -d go)" "$(want golang)"
 check node   "$(node --version 2>/dev/null | tr -d v)"                 "$(want nodejs)"
 check pnpm   "$(pnpm --version 2>/dev/null)"                           "$(want pnpm)"
-check python "$(python3 --version 2>/dev/null | awk '{print $2}')"     "$(want python)"
+# The interpreter that matters is the one uv resolves for this project, not
+# whatever `python3` happens to be on PATH. They differ in CI: setup-uv installs
+# the pinned Python into its own directory and sets UV_PYTHON, leaving the
+# runner's older system python3 first on PATH. Checking python3 there measures
+# an interpreter nothing in this repo ever runs.
+project_python=""
+if command -v uv >/dev/null 2>&1; then
+  project_python="$(uv python find 2>/dev/null || true)"
+fi
+[ -x "$project_python" ] || project_python="$(command -v python3 || true)"
+check python "$("$project_python" --version 2>/dev/null | awk '{print $2}')"     "$(want python)"
 check uv     "$(uv --version 2>/dev/null | awk '{print $2}')"          "0.4.0"
 check git    "$(git --version 2>/dev/null | awk '{print $3}')"         "2.40.0"
 check docker "$(docker --version 2>/dev/null | awk '{print $3}' | tr -d ,)" "24.0.0"

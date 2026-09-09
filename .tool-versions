@@ -1,6 +1,6 @@
 # Single source of truth for local toolchain versions (asdf / mise compatible).
 # scripts/doctor.sh enforces these. Keep .nvmrc and .python-version in sync.
-golang 1.25.6
+golang 1.27.1
 nodejs 22.18.0
 python 3.13.1
 pnpm 9.12.0

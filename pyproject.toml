@@ -20,6 +20,12 @@ dev = [
     "mypy>=1.11",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    # Needed by tests/integration. SPEC 3.2 names asyncpg for the Python
+    # services and SPEC 3.3 names Redis, so these are not throwaway: the task
+    # that first writes service code against them promotes them to runtime
+    # dependencies of that service.
+    "asyncpg>=0.30",
+    "redis>=5.0",
 ]
 
 [tool.ruff]
@@ -41,6 +47,13 @@ warn_unreachable = true
 exclude = ["agent/opencode", "packages/schema/gen"]
 
 [tool.pytest.ini_options]
-testpaths = ["services/sandboxd/tests", "services/workers/tests"]
+testpaths = ["services/sandboxd/tests", "services/workers/tests", "tests/integration"]
 asyncio_mode = "auto"
 addopts = "-q --strict-markers --import-mode=importlib"
+markers = [
+    "integration: needs Postgres and Redis; run with `make test-integration`",
+]
+
+[[tool.mypy.overrides]]
+module = ["asyncpg.*", "redis.*"]
+ignore_missing_imports = true

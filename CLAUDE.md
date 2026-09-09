@@ -47,8 +47,13 @@ make bootstrap    # install JS, Python and Go deps; install git hooks
 make verify       # structure, lint, typecheck, test, build
 make fmt          # auto-format all three languages
 make check-branch # validate the current branch name
+make services-up  # Postgres + Redis in Docker (ports 55432 / 56379)
+make test-integration
 make help         # everything else
 ```
+
+CI runs each language as a separate job and aggregates into a single `ci`
+check. `make verify` is the same thing locally, minus integration.
 
 Node must be 22.18.0 — `nvm use` before running anything JS. The shell default
 on this machine is older, and `engine-strict=true` will reject it.

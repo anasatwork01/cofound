@@ -54,6 +54,13 @@ without them. Start them during phase 0.
   `https://github.com/anasatwork01/cofound.git`, so Go modules are
   `github.com/anasatwork01/cofound/...`. The npm scope stays `@halyard/*` -
   that is the product name, not the repo URL.
+- **Production Redis is a separate choice from the dev image.** `compose.yaml`
+  runs `redis:8.10-alpine` for local work, which says nothing about production.
+  Redis 8 is AGPLv3-licensed; running it unmodified as internal infrastructure
+  is unremarkable, but the managed offering will be picked on other grounds
+  anyway (ElastiCache, Upstash, Valkey, or self-hosted). Decide before phase 1
+  ships the write lease, since the lease is the first durable dependency on it.
+
 - **Sandbox egress allowlist mechanics.** SPEC §9 requires deny-by-default
   egress. Whether Modal exposes the necessary network policy primitives is
   part of §22 item 5, and the whole security model in §17.1 depends on it.

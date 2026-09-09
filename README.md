@@ -14,6 +14,8 @@ mise install          # or: nvm use && asdf install   (see .tool-versions)
 make doctor           # verify your toolchain
 make bootstrap        # install JS, Python and Go dependencies, plus git hooks
 make verify           # what CI runs: structure, lint, typecheck, test, build
+make services-up      # Postgres + Redis in Docker
+make test-integration # integration suite against them
 make help             # all targets
 ```
 

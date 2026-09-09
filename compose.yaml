@@ -1,0 +1,58 @@
+# Local Postgres and Redis for development and integration tests.
+#
+# Image pins match .github/workflows/ci.yml exactly. If they drift, a test can
+# pass locally and fail in CI for reasons that have nothing to do with the
+# change under review.
+#
+#   make services-up      start and wait for health
+#   make test-integration run the integration suite against them
+#   make services-down    stop (ARGS=-v also drops the data volume)
+
+name: halyard
+
+services:
+  postgres:
+    image: postgres:18.6-alpine
+    environment:
+      # Local only. Production credentials live in the secret store under
+      # envelope encryption and never appear in a file like this (SPEC 17.1).
+      POSTGRES_USER: halyard
+      POSTGRES_PASSWORD: halyard
+      POSTGRES_DB: halyard
+    # Deliberately not 5432. A developer machine often already runs Postgres,
+    # and a clash either fails the container or — worse — leaves two servers
+    # reachable and the tests talking to the wrong one. Override with
+    # HALYARD_POSTGRES_PORT if 55432 is also taken.
+    ports:
+      - "${HALYARD_POSTGRES_PORT:-55432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U halyard -d halyard"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      # Postgres 18+ wants a single mount at /var/lib/postgresql, not at
+      # .../data: the image then puts the cluster in a version-namespaced
+      # subdirectory so `pg_upgrade --link` works without crossing a mount
+      # boundary. Mounting .../data makes the container exit 1 on start.
+      # https://github.com/docker-library/postgres/pull/1259
+      - postgres-data:/var/lib/postgresql
+
+  redis:
+    image: redis:8.10-alpine
+    # SPEC 3.3: Redis holds leases, caches, warm-pool registry and rate-limit
+    # counters — "nothing durable". Persistence is off deliberately, so local
+    # behaviour matches an eviction-capable production cache rather than
+    # accidentally depending on data surviving a restart.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    # Not 6379, for the same reason — see the note on postgres above.
+    ports:
+      - "${HALYARD_REDIS_PORT:-56379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  postgres-data:
