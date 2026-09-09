@@ -31,15 +31,63 @@ Status values: `unverified` · `verified` · `contradicted` · `blocked`
 Verified 2026-09-09 on darwin/amd64 (Darwin 25.5.0). Pins in `.tool-versions`,
 enforced by `make doctor`.
 
-| Tool   | Pinned  | Installed       | Note                                                                                                                                                      |
-| ------ | ------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Go     | 1.25.6  | 1.25.6          | SPEC §3.2 asks for 1.23+                                                                                                                                  |
-| Node   | 22.18.0 | 22.18.0 via nvm | Default shell node was 18.20.8, which is too old for current Next.js. `.nvmrc` + `engine-strict=true` make the mismatch fail loudly rather than silently. |
-| pnpm   | 9.12.0  | 9.12.0          |                                                                                                                                                           |
-| Python | 3.13.1  | 3.13.1          | SPEC §3.2 asks for 3.12+; `requires-python = ">=3.12"`                                                                                                    |
-| uv     | >= 0.4  | 0.11.18         |                                                                                                                                                           |
-| Docker | >= 24   | 29.5.2          | Needed for integration tests against real Postgres                                                                                                        |
-| git    | >= 2.40 | 2.46.2          |                                                                                                                                                           |
+| Tool   | Pinned  | Installed       | Note                                                                                                                                                                                                                                                                                                      |
+| ------ | ------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Go     | 1.27.1  | 1.27.1          | SPEC §3.2 asks for 1.23+. Bumped from 1.25.6 on 2026-09-09 when Homebrew upgraded the toolchain; the pin tracks what is installed so CI's `setup-go` matches. `go.work` deliberately still declares `go 1.25.0` — that is the minimum _language_ version the code needs, not the toolchain the team runs. |
+| Node   | 22.18.0 | 22.18.0 via nvm | Default shell node was 18.20.8, which is too old for current Next.js. `.nvmrc` + `engine-strict=true` make the mismatch fail loudly rather than silently.                                                                                                                                                 |
+| pnpm   | 9.12.0  | 9.12.0          |                                                                                                                                                                                                                                                                                                           |
+| Python | 3.13.1  | 3.13.1          | SPEC §3.2 asks for 3.12+; `requires-python = ">=3.12"`                                                                                                                                                                                                                                                    |
+| uv     | >= 0.4  | 0.11.18         |                                                                                                                                                                                                                                                                                                           |
+| Docker | >= 24   | 29.5.2          | Needed for integration tests against real Postgres                                                                                                                                                                                                                                                        |
+| git    | >= 2.40 | 2.46.2          |                                                                                                                                                                                                                                                                                                           |
+
+## Service containers
+
+Pinned in `compose.yaml` and `.github/workflows/ci.yml`. Verified 2026-09-09 by
+running them and asserting behaviour in `tests/integration/test_infra.py`.
+
+| Component | Pin                    | Confirmed running    |
+| --------- | ---------------------- | -------------------- |
+| Postgres  | `postgres:18.6-alpine` | PostgreSQL 18.6      |
+| Redis     | `redis:8.10-alpine`    | redis_version 8.10.1 |
+
+### Postgres 18 changed the volume mount point
+
+The data volume must be mounted at `/var/lib/postgresql`, **not** at
+`/var/lib/postgresql/data`. The image places the cluster in a
+version-namespaced subdirectory so `pg_upgrade --link` works without crossing a
+mount boundary. Mounting `.../data` makes the container exit 1 on start with a
+long explanatory message. See docker-library/postgres#1259.
+
+### `current_setting('app.org_id', true)` does not reset to NULL
+
+This decides how the SPEC §6 RLS policy must be written, and the intuitive
+guess is wrong. Measured directly against 18.6:
+
+| State of the connection                   | `current_setting('app.org_id', true)` |
+| ----------------------------------------- | ------------------------------------- |
+| setting never set on this session         | `NULL`                                |
+| after a `set local` transaction has ended | `''` (empty string)                   |
+
+And `''::uuid` raises `invalid input syntax for type uuid`.
+
+So the policy shape written in SPEC §6 —
+`using (org_id = current_setting('app.org_id')::uuid)` — **fails closed**, which
+is the important part: an error returns no rows, so there is no cross-tenant
+leak. But it fails with a database error rather than an empty result, and it
+does so on any pooled connection that has already served one scoped request.
+
+**Task 0.6 should write the policy as
+`using (org_id = nullif(current_setting('app.org_id', true), '')::uuid)`.** NULL
+matches no row, so an unscoped connection sees nothing instead of raising.
+`tests/integration/test_infra.py::test_postgres_rls_session_variable_resets_to_empty_string`
+pins all of this down, so a future Postgres upgrade that changes it fails there.
+
+### Redis persistence is off deliberately
+
+`--save "" --appendonly no`, because SPEC §3.3 says Redis holds nothing durable.
+Local behaviour therefore matches an eviction-capable production cache instead
+of accidentally depending on data surviving a restart.
 
 Not yet installed, needed by the tasks that introduce them: `goose` (task 0.6),
 `wrangler` (task 0.10), `modal` (task 1.3).

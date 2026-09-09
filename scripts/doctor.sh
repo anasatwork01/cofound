@@ -30,6 +30,22 @@ check() {
 }
 
 echo "toolchain:"
+
+# A hardcoded GOROOT export survives a Go upgrade and then breaks every single
+# go command with "cannot find GOROOT directory" — an error that looks nothing
+# like its cause, and which makes the version probe below report "MISSING go".
+# Name it explicitly so nobody loses an afternoon to it.
+if [ -n "${GOROOT:-}" ] && [ ! -d "$GOROOT" ]; then
+  red "  BROKEN   GOROOT is set to $GOROOT, which does not exist"
+  echo "           A Go upgrade moved it. Unset GOROOT: the go binary locates its"
+  echo "           own runtime, so the variable is unnecessary and version-fragile."
+  echo "           Check your shell profile for a hardcoded 'export GOROOT=...'."
+  fail=1
+elif ! go version >/dev/null 2>&1; then
+  red "  BROKEN   go is on PATH but does not run: $(go version 2>&1 | head -1)"
+  fail=1
+fi
+
 check go     "$(go version 2>/dev/null | awk '{print $3}' | tr -d go)" "$(want golang)"
 check node   "$(node --version 2>/dev/null | tr -d v)"                 "$(want nodejs)"
 check pnpm   "$(pnpm --version 2>/dev/null)"                           "$(want pnpm)"

@@ -1,0 +1,174 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# One in-flight run per ref. A superseded PR run is cancelled; main is never
+# cancelled, so every commit that lands keeps a real result.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+# Third-party actions are pinned to commit SHAs rather than tags. A tag can be
+# repointed at new code; a SHA cannot. The trailing comment records the version
+# each SHA was, so a reviewer can tell what is being bumped.
+
+jobs:
+  meta:
+    name: structure, branch, toolchain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: tv
+        run: ./scripts/tool-versions.sh >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ steps.tv.outputs.golang }}
+          cache: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ steps.tv.outputs.pnpm }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ steps.tv.outputs.nodejs }}
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: ${{ steps.tv.outputs.python }}
+
+      - name: Layout matches SPEC section 4
+        run: make structure
+
+      # Proves .tool-versions is installable, not just aspirational: a pin that
+      # no longer resolves fails here rather than on a new engineer's first day.
+      - name: Toolchain matches .tool-versions
+        run: make doctor
+
+      # head_ref is attacker-controllable on a fork, so it goes through the
+      # environment and never into the shell command itself.
+      - name: Branch name follows CONTRIBUTING.md
+        if: github.event_name == 'pull_request'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: ./scripts/check-branch.sh "$HEAD_REF"
+
+  go:
+    name: go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: tv
+        run: ./scripts/tool-versions.sh >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ steps.tv.outputs.golang }}
+          # No module has dependencies yet, so there is no go.sum to key a cache
+          # on. Task 0.6 adds pgx; turn caching on in the same change.
+          cache: false
+      - run: make lint-go
+      - run: make test-go
+      - run: make build
+
+  python:
+    name: python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: tv
+        run: ./scripts/tool-versions.sh >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: ${{ steps.tv.outputs.python }}
+          enable-cache: true
+      - run: uv sync --all-packages --locked
+      - run: make lint-py
+      - run: make typecheck-py
+      - run: make test-py
+
+  js:
+    name: js
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: tv
+        run: ./scripts/tool-versions.sh >> "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ steps.tv.outputs.pnpm }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ steps.tv.outputs.nodejs }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: make lint-js
+
+  integration:
+    name: integration (postgres + redis)
+    runs-on: ubuntu-latest
+
+    # Same image pins as compose.yaml. If these drift, a test passes locally and
+    # fails in CI for reasons unrelated to the change under review.
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_USER: halyard
+          POSTGRES_PASSWORD: halyard
+          POSTGRES_DB: halyard
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U halyard -d halyard"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+      redis:
+        image: redis:8.10-alpine
+        ports: ["56379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    env:
+      DATABASE_URL: postgres://halyard:halyard@localhost:55432/halyard
+      REDIS_URL: redis://localhost:56379/0
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: tv
+        run: ./scripts/tool-versions.sh >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: ${{ steps.tv.outputs.python }}
+          enable-cache: true
+      - run: uv sync --all-packages --locked
+      # pytest exits 5 when it collects nothing, so a harness that silently
+      # stopped running these tests fails the job instead of reporting green.
+      - run: make test-integration
+
+  ci:
+    name: ci
+    if: always()
+    needs: [meta, go, python, js, integration]
+    runs-on: ubuntu-latest
+    steps:
+      # A single required status check for branch protection: adding a job above
+      # does not mean remembering to add it in repository settings.
+      - name: Require every job to have succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for result in $RESULTS; do
+            if [ "$result" != "success" ]; then
+              echo "::error::a required job did not succeed"
+              exit 1
+            fi
+          done
+          echo "all jobs succeeded"

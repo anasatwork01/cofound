@@ -91,8 +91,20 @@ These come from the specification, not from taste:
 ## Before you push
 
 ```bash
-make verify     # structure, lint, typecheck, test, build — all three languages
+make verify              # structure, lint, typecheck, test, build — all three languages
+make services-up         # Postgres + Redis, if you touched anything they cover
+make test-integration
 ```
 
-`make fmt` fixes most lint failures. `make doctor` diagnoses a toolchain that
-disagrees with [.tool-versions](.tool-versions).
+`make verify` is exactly what CI runs, minus the integration job. `make fmt`
+fixes most lint failures. `make doctor` diagnoses a toolchain that disagrees
+with [.tool-versions](.tool-versions).
+
+CI runs each language as its own job, so a Python lint failure does not hide a
+Go test failure. `ci` is an aggregate job that fails if any other job did —
+make that the single required status check in branch protection, and adding a
+job later needs no change in repository settings.
+
+Local service ports are deliberately not 5432/6379 (see `compose.yaml`), so the
+repo never fights a Postgres or Redis you already run. Override with
+`HALYARD_POSTGRES_PORT` / `HALYARD_REDIS_PORT` if 55432/56379 are taken too.

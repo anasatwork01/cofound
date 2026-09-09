@@ -20,7 +20,9 @@ required_files=(
   go.work pyproject.toml package.json pnpm-workspace.yaml Makefile
   .tool-versions .gitignore .editorconfig
   README.md CONTRIBUTING.md CLAUDE.md
+  compose.yaml .github/workflows/ci.yml
   scripts/doctor.sh scripts/check-structure.sh scripts/check-branch.sh
+  scripts/tool-versions.sh
   .githooks/pre-push
   docs/SPEC.md docs/TASKS.md docs/verified.md docs/open-questions.md
 )
@@ -41,6 +43,14 @@ if [ -f .gitmodules ]; then
   if grep -q 'branch =' .gitmodules; then
     echo "  .gitmodules tracks a branch; SPEC §11.1 requires a pinned tag"; fail=1
   fi
+fi
+
+# CI must read its toolchain versions from .tool-versions, never inline them.
+if grep -nE '(go-version|node-version|python-version|version):[[:space:]]*[\x27"]?[0-9]+\.' \
+     .github/workflows/ci.yml >/dev/null 2>&1; then
+  echo "  .github/workflows/ci.yml hardcodes a toolchain version;"
+  echo "  use scripts/tool-versions.sh so .tool-versions stays the only source"
+  fail=1
 fi
 
 if [ "$fail" -ne 0 ]; then

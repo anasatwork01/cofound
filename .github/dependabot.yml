@@ -1,0 +1,13 @@
+version: 2
+
+updates:
+  # Pinning actions to commit SHAs (see ci.yml) means nothing bumps them on its
+  # own. Without this, "pinned" quietly becomes "stale and unpatched".
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "update"
+    labels:
+      - dependencies
