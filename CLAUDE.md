@@ -53,6 +53,27 @@ make help         # everything else
 Node must be 22.18.0 — `nvm use` before running anything JS. The shell default
 on this machine is older, and `engine-strict=true` will reject it.
 
+## Design
+
+The `frontend-design` skill (`.claude/skills/frontend-design/`) is available for
+UI work. When it and the spec disagree:
+
+1. **The approved mockup wins for the console.** SPEC §3.1 is explicit — extract
+   tokens from `docs/mockup.html` rather than inventing new ones. The skill
+   agrees: "where the brief pins down a visual direction, follow it exactly."
+2. **The skill leads where no design has been approved**: `templates/` app
+   templates, marketing surfaces, and net-new console screens the mockup does
+   not cover.
+3. **Console semantics are fixed** (SPEC §18): three states only — violet =
+   agent-owned action, amber = waiting on you, teal = live — used identically
+   for an ads approval, incomplete Stripe onboarding and a DNS-pending domain.
+   One learned pattern, not three.
+
+The skill's copy rules and SPEC §18's already agree: an action keeps its name
+through the whole flow, errors say what happened and how to fix it without
+apologising, empty states are invitations to act. Where §18 is more specific,
+§18 wins.
+
 ## Working agreements from the spec
 
 1. **Contracts before implementations.** Schemas in `packages/schema` first,
