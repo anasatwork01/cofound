@@ -52,6 +52,12 @@ lint: lint-go lint-py lint-js ## Lint every language
 
 .PHONY: lint-go
 lint-go: ## gofmt + go vet
+	@if [ -z "$(GO_MODULES)" ]; then \
+		echo "  no Go modules resolved: 'go list -m' produced nothing."; \
+		echo "  Run 'make doctor' — a stale GOROOT export breaks every go command,"; \
+		echo "  and this target would otherwise run nothing and report success."; \
+		exit 1; \
+	fi
 	@for d in $(GO_MODULES); do \
 		echo "  go   $${d#$(CURDIR)/}"; \
 		out=$$(gofmt -l "$$d"); \
@@ -80,6 +86,12 @@ test: test-go test-py ## Run unit tests (no services needed)
 
 .PHONY: test-go
 test-go: ## Go unit tests
+	@if [ -z "$(GO_MODULES)" ]; then \
+		echo "  no Go modules resolved: 'go list -m' produced nothing."; \
+		echo "  Run 'make doctor' — a stale GOROOT export breaks every go command,"; \
+		echo "  and this target would otherwise run nothing and report success."; \
+		exit 1; \
+	fi
 	@for d in $(GO_MODULES); do \
 		echo "  go test $${d#$(CURDIR)/}"; \
 		(cd "$$d" && go test ./...); \

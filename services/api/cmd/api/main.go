@@ -1,36 +1,39 @@
-// Command api is a placeholder. REST API, auth, org/project CRUD, SSE gateway, approval gates
-//
-// Implemented in a later task; see docs/TASKS.md.
+// Command api is the REST API, auth, org/project CRUD, SSE gateway and
+// approval gates.
 package main
 
 import (
-	"flag"
-	"fmt"
-	"log/slog"
-	"os"
+	"github.com/anasatwork01/cofound/packages/chassis"
+	"github.com/anasatwork01/cofound/packages/chassis/telemetry/otlp"
+
+	"github.com/anasatwork01/cofound/services/api/internal/httpapi"
 )
 
 const service = "api"
 
 // Build metadata, injected with -ldflags at build time. See the Makefile.
+//
+// These stay in package main because the Makefile injects -X main.version and
+// -X main.commit. A chassis cannot own them without changing the ldflags paths,
+// and moving them would silently produce "dev"/"unknown" in every production
+// log line with no build failure.
 var (
 	version = "dev"
 	commit  = "unknown"
 )
 
 func main() {
-	printVersion := flag.Bool("version", false, "print version and exit")
-	flag.Parse()
+	api := httpapi.New()
 
-	if *printVersion {
-		fmt.Printf("%s %s (%s)\n", service, version, commit)
-		return
-	}
-
-	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	log.Info("scaffolded, not yet implemented",
-		"service", service,
-		"version", version,
-		"commit", commit,
-	)
+	chassis.Main(chassis.Service{
+		Name:    service,
+		Version: version,
+		Commit:  commit,
+		Bind:    api.Bind,
+		Setup:   api.Setup,
+		Probes:  api.Probes,
+		// This one line opts api's binary into the OTLP exporter's ~65 modules
+		// and ~10MB. gitd, aigw and mcp choose for themselves.
+		Exporter: otlp.Factory,
+	})
 }

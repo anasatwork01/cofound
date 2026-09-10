@@ -1,0 +1,15 @@
+code	status	retriable	message	fix
+conflict	409	false	That conflicts with the current state.	Reload and try again.
+forbidden	403	false	Your role does not allow this.	Ask an owner or admin to do it, or to change your role.
+internal	500	false	Halyard could not complete this request.	Contact support with the request id.
+invalid	422	false	That request is not valid.	Check the fields and try again.
+method_not_allowed	405	false	That method is not allowed here.	
+not_found	404	false	That does not exist.	
+not_ready	503	true	This service is still starting up.	Try again in a few seconds.
+payload_too_large	413	false	That request body is too large.	Send less data.
+payment_required	402	false	This organisation is out of credits.	Top up credits to continue.
+rate_limited	429	true	Too many requests.	Wait a moment and try again.
+timeout	504	true	That took too long.	Try again.
+unauthenticated	401	false	You are not signed in.	Sign in and try again.
+unavailable	503	true	A service Halyard depends on is unavailable.	Try again shortly.
+unsupported_media_type	415	false	That content type is not supported.	Send application/json.

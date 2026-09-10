@@ -20,6 +20,11 @@ coverage/
 htmlcov/
 *.tsbuildinfo
 
+# --- go workspace ---
+# Created once modules depend on each other across the workspace. Each module's
+# own go.sum carries the hashes, so nothing is lost by ignoring it.
+go.work.sum
+
 # --- local environment ---
 .env
 .env.*
