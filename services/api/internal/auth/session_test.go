@@ -118,11 +118,24 @@ func TestRotationDoesNotExtendTheAbsoluteDeadline(t *testing.T) {
 	user := testUser(t, pool)
 	ctx := context.Background()
 
-	token, issued, err := s.Issue(ctx, user, nil, "")
+	token, _, err := s.Issue(ctx, user, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	absolute := issued.AbsoluteExpiresAt
+
+	// The baseline is read back from the DATABASE rather than taken from the
+	// value Issue returned in memory. Postgres timestamptz has MICROSECOND
+	// precision and Go's time.Now has nanosecond, so an in-memory deadline and
+	// the same deadline round-tripped through a column differ in the last three
+	// digits. Comparing the two passed on macOS, whose clock is already
+	// microsecond-granular, and failed in CI on Linux — which is the kind of
+	// difference that makes a test look flaky rather than wrong.
+	var absolute time.Time
+	if err := pool.Unscoped().QueryRow(ctx,
+		`select absolute_expires_at from user_sessions where user_id = $1`,
+		user).Scan(&absolute); err != nil {
+		t.Fatal(err)
+	}
 
 	// Rotate repeatedly, keeping the session in constant use.
 	current := token

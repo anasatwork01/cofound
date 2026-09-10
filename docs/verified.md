@@ -599,6 +599,20 @@ to return `Token([redacted])`, plus `GoString` for `%#v`, closes it. The test
 covers `%v`, `%s`, `%+v`, `%#v` and `%q`, on the value, the struct and a pointer
 to it.
 
+### Postgres timestamps are microseconds; Go's are nanoseconds
+
+`timestamptz` stores microsecond precision. `time.Now()` on Linux returns
+nanoseconds. So a deadline held in memory and the same deadline read back from a
+column differ in the last three digits, and comparing the two is a test that
+passes on macOS — whose clock is already microsecond-granular — and fails on
+Linux. That is exactly what happened: `TestRotationDoesNotExtendTheAbsoluteDeadline`
+passed locally and failed in CI with `...357563094` against `...357563`.
+
+Any assertion about a timestamp that has been through the database must take
+both sides from the database, or truncate to `time.Microsecond`. The test now
+reads its baseline back with a query rather than using the value the constructor
+returned.
+
 ### The rotation grace window is a bug fix, not slack
 
 SPEC §8 requires rotating cookies. A console page issues several requests at
