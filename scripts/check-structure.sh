@@ -11,7 +11,7 @@ required_dirs=(
   agent/opencode agent/patches agent/agentd agent/image agent/config
   capabilities/auth capabilities/payments capabilities/email capabilities/uploads
   templates
-  packages/chassis packages/schema packages/ui
+  packages/chassis packages/pychassis packages/schema packages/ui
   db/migrations
   infra/cloudflare infra/modal
   docs
@@ -21,13 +21,15 @@ required_files=(
   .tool-versions .gitignore .editorconfig
   README.md CONTRIBUTING.md CLAUDE.md
   compose.yaml .github/workflows/ci.yml
-  scripts/gen.sh
+  scripts/gen.sh scripts/gen_obs.py
   packages/schema/common.schema.json
   packages/schema/agent-events.schema.json
   packages/schema/capability-manifest.schema.json
   packages/schema/meters.schema.json
   packages/schema/sandboxd.openapi.yaml
   packages/schema/api.openapi.yaml
+  packages/schema/observability.json
+  packages/schema/observability.schema.json
   scripts/doctor.sh scripts/check-structure.sh scripts/check-branch.sh
   scripts/tool-versions.sh
   .githooks/pre-push
@@ -41,6 +43,17 @@ done
 for f in "${required_files[@]}"; do
   [ -f "$f" ] || { echo "  MISSING FILE  $f"; fail=1; }
 done
+
+# Every file scripts/gen_obs.py writes must exist and must say so. A generated
+# file that someone hand-edits and un-marks is a copy of the redaction denylist
+# that has quietly stopped tracking the source document.
+while read -r out; do
+  if [ ! -f "$out" ]; then
+    echo "  MISSING FILE  $out (run 'make gen')"; fail=1
+  elif ! head -5 "$out" | grep -qi 'DO NOT EDIT'; then
+    echo "  $out is a gen_obs.py output but is not marked DO NOT EDIT"; fail=1
+  fi
+done < <(./scripts/gen_obs.py --outputs)
 
 # The agent submodule must stay pinned, never tracked on a moving branch (§11.1).
 if [ -f .gitmodules ]; then

@@ -9,7 +9,19 @@ dependencies = []
 package = false
 
 [tool.uv.workspace]
-members = ["services/sandboxd", "services/workers"]
+members = [
+    "packages/schema",
+    "packages/pychassis",
+    "services/sandboxd",
+    "services/workers",
+]
+
+# Intra-workspace dependencies resolve to the local checkout rather than to
+# PyPI, which has no halyard-anything on it. This is the uv equivalent of the
+# replace directives every Go module in this repo carries.
+[tool.uv.sources]
+halyard-schema = { workspace = true }
+halyard-chassis = { workspace = true }
 
 [dependency-groups]
 # Runtime dependencies (fastapi, modal, asyncpg, google-ads, facebook-business,
@@ -28,6 +40,10 @@ dev = [
     "redis>=5.0",
     "datamodel-code-generator>=0.78.0",
     "jsonschema>=4.26.0",
+    # Starlette 1.6's TestClient imports httpx2, not httpx, and raises a
+    # RuntimeError telling you to install it if absent. Test-only: the chassis
+    # itself makes no outbound HTTP calls yet.
+    "httpx2>=0.29",
 ]
 
 [tool.ruff]
@@ -49,7 +65,13 @@ warn_unreachable = true
 exclude = ["agent/opencode", "packages/schema/gen"]
 
 [tool.pytest.ini_options]
-testpaths = ["services/sandboxd/tests", "services/workers/tests", "tests/contracts", "tests/integration"]
+testpaths = [
+    "packages/pychassis/tests",
+    "services/sandboxd/tests",
+    "services/workers/tests",
+    "tests/contracts",
+    "tests/integration",
+]
 asyncio_mode = "auto"
 addopts = "-q --strict-markers --import-mode=importlib"
 markers = [

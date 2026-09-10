@@ -367,29 +367,23 @@ def test_usage_event_carries_units_and_cannot_carry_credits() -> None:
 
 
 def _generated_module(name: str) -> Any:
-    """Import a generated pydantic module by path.
+    """Import a generated pydantic module.
 
-    packages/schema/gen/python is not an installed package — it is committed
-    output that services import via their own path setup — so it is loaded
-    directly here.
+    An ordinary import: packages/schema/pyproject.toml declares gen/python as
+    the `halyard_schema` distribution, so these are installed like any other
+    workspace package. They used to be loaded by file path, which needed a
+    sys.modules dance to stop pydantic raising "is not fully defined" -- the
+    generated modules use `from __future__ import annotations`, so every
+    annotation is a string and pydantic resolves them through
+    sys.modules[cls.__module__].__dict__ while building each class. Making the
+    package importable removed that whole workaround, and it had to happen
+    anyway: the Python chassis renders wire errors with
+    halyard_schema.common.Error, and a module tree loaded by file path cannot be
+    a runtime dependency of anything.
     """
-    import importlib.util
-    import sys
+    import importlib
 
-    path = SCHEMA_DIR / "gen" / "python" / f"{name}.py"
-    assert path.exists(), f"{path} missing; run make gen"
-    mod_name = f"_gen_{name}"
-    spec = importlib.util.spec_from_file_location(mod_name, path)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    # Register before exec: the generated modules use
-    # `from __future__ import annotations`, so every annotation is a string, and
-    # pydantic resolves them through sys.modules[cls.__module__].__dict__ while
-    # building each class. Omitting this raises "is not fully defined" — which
-    # looks exactly like a generator bug and is not one.
-    sys.modules[mod_name] = module
-    spec.loader.exec_module(module)
-    return module
+    return importlib.import_module(f"halyard_schema.{name}")
 
 
 def test_generated_python_validates_a_spec_event() -> None:

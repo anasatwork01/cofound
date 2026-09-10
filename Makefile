@@ -146,12 +146,18 @@ gen-check: ## Fail if the checked-in bindings disagree with the schemas
 # working tree against the index rather than against HEAD. Using `git status`
 # here would reject a schema change staged together with its own regenerated
 # output — the correct shape for such a commit.
-	@if ! git diff --quiet -- packages/schema/gen || \
-	    [ -n "$$(git ls-files --others --exclude-standard -- packages/schema/gen)" ]; then \
+#
+# The paths come from gen_obs.py rather than being listed here: the observability
+# vocabulary generates into packages/chassis and packages/pychassis, and a
+# generated file this check does not cover is one that can silently go stale,
+# which is the entire failure this target exists to prevent.
+	@paths="packages/schema/gen $$(./scripts/gen_obs.py --outputs)"; \
+	if ! git diff --quiet -- $$paths || \
+	    [ -n "$$(git ls-files --others --exclude-standard -- $$paths)" ]; then \
 		echo "  generated bindings are stale."; \
 		echo "  Run 'make gen' and commit the result alongside the schema change."; \
-		git diff --stat -- packages/schema/gen; \
-		git ls-files --others --exclude-standard -- packages/schema/gen | sed 's/^/  untracked: /'; \
+		git diff --stat -- $$paths; \
+		git ls-files --others --exclude-standard -- $$paths | sed 's/^/  untracked: /'; \
 		exit 1; \
 	fi
 	@echo "  generated bindings match the schemas"

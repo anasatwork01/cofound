@@ -1,0 +1,47 @@
+[project]
+name = "halyard-chassis"
+version = "0.0.0"
+description = "Halyard Python service chassis: settings, logging, telemetry, health, lifecycle"
+requires-python = ">=3.12"
+
+# Pinned exactly, not ranged. Two of these pins are load-bearing rather than
+# cautious, and both are recorded in docs/verified.md:
+#
+#   starlette  FastAPI 0.141.1 declares starlette>=0.46.0 with NO upper bound
+#              (the cap was removed when Starlette reached 1.0), so it no longer
+#              protects us from a breaking Starlette release. Its floor also
+#              admits five known CVEs, two of which matter directly to SPEC 17:
+#              CVE-2026-48710 and CVE-2026-54282 let a request poison
+#              request.url.path and request.url.hostname, which would defeat
+#              path-based authorization in the control plane. 1.6.0 clears all
+#              five.
+#   pydantic-settings
+#              the error renderer depends on name resolution whose semantics
+#              changed in a minor release (2.15.0 altered case_sensitive
+#              handling), so a caret range could break config error messages
+#              with no code change here.
+#
+# The OTel pairing is arithmetic: core 1.N.x pairs with instrumentation
+# 0.(N+21)bX. 1.44.0 pairs with 0.65b0. Bumping one line without the other is
+# the Python form of the Go otel/otelhttp mismatch already in docs/verified.md.
+dependencies = [
+    "halyard-schema",
+    "fastapi==0.141.1",
+    "starlette==1.6.0",
+    "uvicorn[standard]==0.52.4",
+    "pydantic==2.13.5",
+    "pydantic-settings==2.15.0",
+    "opentelemetry-api==1.44.0",
+    "opentelemetry-sdk==1.44.0",
+    "opentelemetry-exporter-otlp-proto-http==1.44.0",
+    "opentelemetry-instrumentation-fastapi==0.65b0",
+    "opentelemetry-instrumentation-asgi==0.65b0",
+    "opentelemetry-semantic-conventions==0.65b0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/halyard_chassis"]

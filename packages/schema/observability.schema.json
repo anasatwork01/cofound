@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://halyard.dev/schema/observability.schema.json",
+  "title": "Observability vocabulary",
+  "description": "Meta-schema for observability.json, the shared log/trace vocabulary that scripts/gen.sh compiles into Go and Python. This is not a wire contract and is deliberately absent from gen.sh's JSON_DOCS list: nothing serialises a document of this shape, so generating model types from it would produce dead code.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["doc", "constants", "log_keys", "redaction", "trace_keys"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "doc": { "$ref": "#/$defs/doc" },
+    "constants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["redacted", "suppressed_message"],
+      "properties": {
+        "redacted": { "$ref": "#/$defs/constant" },
+        "suppressed_message": { "$ref": "#/$defs/constant" }
+      }
+    },
+    "log_keys": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["doc", "groups"],
+      "properties": {
+        "doc": { "$ref": "#/$defs/doc" },
+        "groups": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "keys"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "doc": { "$ref": "#/$defs/doc" },
+              "keys": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/namedKey" } }
+            }
+          }
+        }
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deny_substrings", "allow_exact", "secret_prefixes"],
+      "properties": {
+        "deny_substrings": { "$ref": "#/$defs/documentedList" },
+        "allow_exact": { "$ref": "#/$defs/documentedList" },
+        "secret_prefixes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["doc", "groups"],
+          "properties": {
+            "doc": { "$ref": "#/$defs/doc" },
+            "groups": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "values"],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The provider or credential family, rendered as a trailing comment on the generated line."
+                  },
+                  "values": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": { "type": "string", "minLength": 3 }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "trace_keys": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["doc", "span_attributes", "baggage"],
+      "properties": {
+        "doc": { "$ref": "#/$defs/doc" },
+        "span_attributes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/namedKey" }
+        },
+        "baggage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["doc", "members"],
+          "properties": {
+            "doc": { "$ref": "#/$defs/doc" },
+            "members": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/namedKey" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "doc": {
+      "description": "Prose carried into the generated files of every language. An array is one line per element; an empty string is a blank line.",
+      "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }]
+    },
+    "constant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["doc", "value"],
+      "properties": {
+        "doc": { "$ref": "#/$defs/doc" },
+        "value": { "type": "string", "minLength": 1 }
+      }
+    },
+    "namedKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ident", "key"],
+      "properties": {
+        "ident": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Za-z0-9]*$",
+          "description": "PascalCase. Used verbatim as the Go identifier and converted to SCREAMING_SNAKE_CASE for Python, so the two languages cannot be renamed independently."
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The string that reaches the log line or the span."
+        }
+      }
+    },
+    "documentedList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["doc", "values"],
+      "properties": {
+        "doc": { "$ref": "#/$defs/doc" },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

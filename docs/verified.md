@@ -120,6 +120,296 @@ pin through `.tool-versions`).
    only once the required module has an external dependency of its own, naming a
    source file rather than the missing directive. It reads as a network problem.
 
+## Python dependencies
+
+Verified 2026-09-10 for task 0.5, against PyPI, the upstream changelogs and the
+installed wheel source. Every behavioural claim below was executed on CPython
+3.13.1; where a documented mechanism turned out not to work, that is stated
+rather than the working alternative simply being used.
+
+| Package                                        | Pinned         | Why exactly this                                                                   |
+| ---------------------------------------------- | -------------- | ---------------------------------------------------------------------------------- |
+| `fastapi`                                      | `0.141.1`      | Latest stable. Classifiers through 3.14.                                           |
+| `starlette`                                    | `1.6.0`        | **Pinned explicitly, and this is load-bearing.** See below.                        |
+| `uvicorn[standard]`                            | `0.52.4`       | Latest stable. `httptools` and `uvloop` publish cp313 wheels, so no source builds. |
+| `pydantic`                                     | `2.13.5`       | Exact, not ranged. See the `_extract_field_info` note below.                       |
+| `pydantic-settings`                            | `2.15.0`       | Exact. 2.15.0 altered `case_sensitive` semantics in a _minor_ release.             |
+| `opentelemetry-{api,sdk}`                      | `1.44.0`       | The stable 1.x line.                                                               |
+| `opentelemetry-exporter-otlp-proto-http`       | `1.44.0`       | Follows the 1.x line. No `grpcio` in its closure.                                  |
+| `opentelemetry-instrumentation-{fastapi,asgi}` | `0.65b0`       | The paired 0.x release. See the pairing rule below.                                |
+| `httpx2`                                       | `>=0.29` (dev) | Starlette 1.6's `TestClient` imports `httpx2`, not `httpx`.                        |
+
+### FastAPI no longer caps Starlette, and the floor admits five CVEs
+
+FastAPI 0.141.1 declares `starlette>=0.46.0` with **no upper bound** — the cap
+was removed when Starlette reached 1.0. So FastAPI no longer protects a build
+from a breaking Starlette release, and the chassis must pin it itself or a
+future Starlette 2.0 resolves silently into a build.
+
+The floor is also below five published advisories. Two matter directly to
+SPEC §17: **CVE-2026-48710** (missing Host header validation poisons
+`request.url.path`) and **CVE-2026-54282** (an unvalidated request path
+concatenated into the authority poisons `request.url.hostname`). A poisoned
+`request.url.path` would defeat path-based authorization in the control plane.
+`1.6.0` clears all five.
+
+### The OTel version pairing is arithmetic
+
+Core release `1.N.x` pairs with instrumentation release `0.(N+21)bX`. `1.44.0`
+pairs with `0.65b0`. Bumping one line without the other is the Python form of
+the otel/otelhttp mismatch already recorded under Go dependencies. Compute the
+0.x number rather than looking it up.
+
+Confirmed absent: **`grpcio` is not in the resolved lockfile.** The HTTP
+exporter needs none of it; the `opentelemetry-exporter-otlp` _meta-package_
+would pull `opentelemetry-exporter-otlp-proto-grpc` and grpcio 1.83.1, which is
+exactly the bloat the Go chassis restructured a package to avoid. The exporter
+is however built on blocking `requests`, so `BatchSpanProcessor` is mandatory —
+`SimpleSpanProcessor` would block the event loop on an HTTP POST per span.
+
+### `OTEL_SDK_DISABLED` is a trap twice over, in Python too
+
+Recorded under Go dependencies as _unimplemented_. In Python it is implemented
+and still unusable:
+
+1. The parse is `value.lower().strip() == "true"`, so `OTEL_SDK_DISABLED=1`,
+   `=yes` and `=on` leave the SDK **fully enabled and exporting** while the
+   operator believes telemetry is off.
+2. Even when honoured, it still constructs the provider, runs resource
+   detection, builds the exporter and starts the batch processor's daemon
+   thread.
+
+So disabled mode is implemented the same way as in Go: an empty
+`OTEL_EXPORTER_OTLP_ENDPOINT` builds no provider at all.
+
+### There is no OTel error handler in Python
+
+`otel.SetErrorHandler` has no equivalent. Writing an `ErrorHandler` subclass and
+registering the `opentelemetry_error_handler` entry point — the **documented**
+mechanism — accomplishes nothing: `GlobalErrorHandler` has zero call sites in
+the SDK, exporter or instrumentation packages this chassis uses. Recorded here
+so nobody re-derives it from the docstring. The real seam is a
+`logging.Handler` on `logging.getLogger("opentelemetry")`, and trace-export
+failures are logged once per failed batch with no deduplication, so the chassis
+adds its own.
+
+### Neither OTel shutdown API accepts a deadline
+
+`TracerProvider.shutdown()` takes no timeout and is registered with `atexit` by
+default, so a hanging collector can add up to 30 seconds to termination — past
+most SIGTERM grace periods, turning a clean deploy into a SIGKILL. Hence
+`shutdown_on_exit=False`.
+
+`BatchSpanProcessor.shutdown()` takes no timeout either, and
+`force_flush(timeout_millis=N)` **accepts N and ignores it** — verified: asked
+for 100 ms against a 2 s exporter, it returned `True` after 2.00 s. There is no
+API here that can be asked to give up, so the chassis bounds it with
+`wait_for` over a worker thread and abandons the thread if the budget expires.
+That is safe because the processor's worker is a daemon thread.
+
+Also: `set_baggage()` returns a **new** Context and does not mutate the ambient
+one, so code that drops the return value type-checks, runs and propagates
+nothing. And `OTEL_PROPAGATORS` is captured at import time of
+`opentelemetry.propagate` into a module global, so setting it from a Python
+settings module is a silent no-op — the chassis calls
+`propagate.set_global_textmap()` instead.
+
+### Python's logging: where redaction must live
+
+The chassis needs one hook that every record passes through, including records
+from libraries. Four candidates were measured and three of them are broken for
+this purpose:
+
+| Hook                            | Why it fails                                                                                                                                                                                                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Filter` on the root **logger** | `callHandlers` walks ancestor loggers' **handlers** but never their **filters**, so every record from `httpx`, `uvicorn.access` and `asyncpg` bypasses it. A test that only logs from app code passes on a broken chassis.                                         |
+| `Formatter`                     | Four escapes: a sibling handler with its own formatter; the `exc_text` cache holding the raw traceback for the next handler; `Handler.handleError` dumping raw `msg` and `args` to stderr when a formatter raises; and handlers that never call `format()` at all. |
+| `setLoggerClass`                | Misses every logger created before the call — i.e. essentially all library loggers, created at import — and never touches root.                                                                                                                                    |
+| `setLogRecordFactory`           | A single global slot any library can clobber, and it runs before `exc_text` or the interpolated message exist.                                                                                                                                                     |
+
+**`logging.Handler.handle` is the answer.** It also runs before
+`QueueHandler.prepare` interpolates, and before any sibling formatter can
+populate the `exc_text` cache with plaintext.
+
+Supporting findings, all verified:
+
+- `log.info("token=%s", secret)` leaves the secret in `record.args`. Resolve
+  `getMessage()` first, redact, then clear `args`. Inspecting args element-wise
+  misses a non-`str` `msg` whose `__str__` holds the secret.
+- Guarding traceback redaction with `if not record.exc_text` **leaks from both
+  handlers** when an unredacted one formatted the record first. Redact
+  unconditionally and null `exc_info`.
+- Python 3.12's return-a-`LogRecord` filter form is the **opposite** of what is
+  wanted: it modifies a record for one handler "without side effects on other
+  handlers", leaving the plaintext original for everyone else.
+- `logging.lastResort` writes records to raw stderr at WARNING, around every
+  handler, for any logger with `propagate=False` and no handler of its own. It
+  is set to `None`.
+- `logging.raiseExceptions` must be `False`, or a missing format-string
+  attribute routes to `handleError`, which dumps raw `msg` and `args` to stderr
+  — a cosmetic bug becoming a plaintext leak.
+- `basicConfig(force=True)` removes **and closes** existing root handlers. The
+  chassis wraps any handler added to root so it redacts too, rather than
+  refusing it — refusing breaks `pytest`, `caplog` and debuggers, which pushes
+  people to configure late or not at all.
+- Stdlib tracebacks do not print locals, but the exception's own `str()`, PEP 678
+  notes, the whole `__cause__`/`__context__` chain and the **source line of the
+  raise** all render. Redacting the formatted string covers all four.
+- A `ContextVar` does **not** propagate into `loop.run_in_executor`,
+  `ThreadPoolExecutor.submit` or `threading.Thread` — all start with an empty
+  context, so a sync-`def` endpoint silently logs the default.
+  `asyncio.to_thread` is the exception that does propagate.
+
+### pydantic-settings: four things that break accumulation or leak
+
+- **A `ValidationError` carries the raw input.** On a `missing` error, `input`
+  holds the entire pre-validation dict, so `str(e)` and `errors()` contain raw
+  environment values — verified leaking a live-shaped API key and a password.
+  `SecretStr` does not help: the leak happens before field validation runs.
+  Render only through `errors(include_input=False, include_url=False)`.
+- **`SettingsError` is not a `ValidationError` subclass** and aborts before
+  validation, reporting exactly one problem. Every complex field in
+  `ChassisSettings` is declared `NoDecode` with comma-splitting instead, which
+  restores full accumulation.
+- **`extra="forbid"` is inert for `os.environ`.** It reads like strict
+  validation, but `HTTP_ADDDR=...` is dropped without comment and the service
+  starts on the default. Unknown-variable detection is built by hand.
+- **An empty variable crashes a field that has a good default.** `HTTP_ADDR=`
+  against a defaulted field raises rather than falling back, and Compose,
+  Kubernetes and shell templating all emit `FOO=` for unset. `env_ignore_empty`
+  fixes the empty case; whitespace-only needed a stripping validator, because
+  `env_ignore_empty` only sees the untrimmed string while Go's `raw()` trims
+  first.
+
+Two smaller ones: `bool` rejects surrounding whitespace while `int` accepts it,
+so a stray trailing space breaks only the boolean settings; and
+`SettingsConfigDict` merges across the MRO, so a subclass that _omits_
+`env_prefix` keeps the base's rather than clearing it.
+
+`env_names()` derives the field-to-variable mapping from the fields rather than
+calling `EnvSettingsSource._extract_field_info`, a private API on a package that
+changes resolution semantics in minor releases. The cost is that `AliasChoices`
+is unsupported — deliberately: it cannot report which alias supplied a value,
+and an error naming the wrong variable is worse than none.
+
+### uvicorn's shutdown order, and why the Go four-phase design cannot be ported directly
+
+Verified against the 0.52.4 source:
+
+1. The SIGTERM handler only sets `should_exit`; the main loop notices on its
+   next 0.1 s tick.
+2. `Server.shutdown()` closes **every listener immediately** — there is no
+   lame-duck window in which it still accepts traffic.
+3. It then waits for in-flight work inside
+   `asyncio.wait_for(..., timeout=timeout_graceful_shutdown)`.
+4. **Only then** does it run the lifespan shutdown block.
+
+So the Go chassis's phase 1 (fail readiness) and phase 2 (drain) cannot live in
+the lifespan: by the time it runs, the listener is closed and there is nothing
+left to drain.
+
+Worse, **uvicorn never tells an in-flight handler that the server is stopping.**
+`receive()` yields `http.disconnect` only when the _client_ went away, and
+`Protocol.shutdown()` for a started response merely sets `keep_alive = False`.
+That makes a circular dependency: a stream could only learn about shutdown from
+the lifespan block, which does not run until the stream ends.
+
+`lifecycle.Shutdown` resolves it by capturing the installed SIGTERM handler
+(uvicorn's bound `Server.handle_exit`), installing its own, and calling the
+captured one once its deregister and drain phases finish. It must be installed
+from the lifespan **startup**, because uvicorn installs its handlers inside
+`serve()` and anything earlier is simply replaced.
+
+Further verified facts:
+
+- **`timeout_graceful_shutdown` defaults to `None`**, which is
+  `asyncio.wait_for(..., timeout=None)` — unbounded. One hung stream blocks
+  shutdown forever and the lifespan cleanup never runs. The runner always sets
+  it.
+- It does **not** bound the lifespan shutdown block, which sits outside the
+  `wait_for`. A hung `pool.close()` hangs the process regardless of every
+  uvicorn setting, so each phase carries its own `asyncio.timeout`.
+- uvicorn does not **await** the tasks it cancels before running the lifespan
+  shutdown, so a cancelled handler's `finally` runs concurrently with the block
+  tearing down the resources it touches.
+- A **second SIGTERM escalates nothing** (`handle_exit` promotes to `force_exit`
+  only for SIGINT), so a supervisor re-sending it does nothing. And when
+  `force_exit` _is_ set, the lifespan shutdown is **skipped entirely** — so
+  correctness must never depend solely on it.
+- A graceful shutdown **exits 143, not 0**: `capture_signals` restores the
+  original handlers and re-raises the captured signal.
+- A request cancelled by the graceful timeout is logged by uvicorn as
+  `ERROR: Exception in ASGI application` with a full `CancelledError` traceback,
+  so every rolling deploy emits error-level tracebacks unless the chassis
+  classifies them as expected.
+
+**There is no uvicorn write, response, total-request or header-read timeout
+anywhere in the codebase.** The Go trap where `http.Server.WriteTimeout` severs
+a live SSE stream has no Python equivalent, and `timeout_keep_alive` (5 s) cannot
+do it either — the keep-alive timer is armed only between requests and is
+disarmed when one begins. The flip side is that nothing bounds a runaway handler,
+which is why the chassis implements its own per-request deadline in middleware
+and exempts streams.
+
+### asyncio: a TaskGroup is the wrong tool for a background poller
+
+- Holding a `TaskGroup` open across a lifespan `yield` is actively dangerous:
+  `_on_task_done` calls `self._parent_task.cancel()`, so a poller that crashes
+  mid-serving cancels the **lifespan task**, the `ExceptionGroup` surfaces at
+  `contextlib`'s `athrow`, and **the shutdown half never runs** while uvicorn
+  keeps serving 200s.
+- A bare `create_task` poller that raises is **completely silent** at the time of
+  failure; asyncio only mentions it when the task is garbage collected. And the
+  loop keeps only **weak** references, so an unreferenced task can be collected
+  mid-execution.
+- `asyncio.CancelledError` derives from `BaseException` on 3.13, so
+  `except Exception` in a supervisor loop is automatically cancellation-safe —
+  and a bare `except:` is not.
+- `task.cancel()` is only a request: cancel, then `await` while suppressing
+  `CancelledError`, or the task's own cleanup is truncated.
+- A timeout that fires while the body is inside a `finally` interrupts the
+  cleanup mid-way, so shutdown steps get a fresh budget rather than inheriting
+  the caller's. And a timeout around `asyncio.shield()`ed work raises to the
+  waiter while the shielded task keeps running unsupervised — so a health poll
+  is never shielded.
+- The lifespan shutdown half runs on a fully operational loop: arbitrary awaits,
+  DNS and new connections all work, so a final OTLP flush over the network there
+  is viable.
+- Neither Starlette nor uvicorn exposes any in-flight request count or drain
+  signal. uvicorn tracks `server_state.connections` and `.tasks` internally, but
+  they are undocumented and connection-level rather than request-level.
+
+### Dependency health checks
+
+| Dependency                  | Cheapest correct check              | Measured                                        | Note                                                                                                               |
+| --------------------------- | ----------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Postgres (`asyncpg` 0.31.0) | `execute("SELECT 1")`, no arguments | **0.589 ms/op pooled, 26.5 ms/op reconnecting** | Takes the simple-query path, so it does not pollute the statement cache. `fetchval` is marginally faster but does. |
+| Redis (`redis-py` 8.1.0)    | `ping()` on a dedicated client      | 0.183 ms/op                                     | Must use `retry=Retry(NoBackoff(), 0)`.                                                                            |
+
+- **The probe must hold its connection.** Measured against the local
+  containers on 2026-09-10: a fresh `asyncpg.connect` per poll costs 26.5 ms
+  against 0.589 ms through a pool — 45x, and a full TCP and authentication
+  handshake every `READINESS_INTERVAL` on every replica. A readiness probe that
+  is itself a load generator is a bad readiness probe, so
+  `halyard_sandboxd.probes` keeps a two-connection pool and registers its
+  `close` with the chassis shutdown.
+- **asyncpg has no built-in pool health check.** Its pool only tests a local
+  `is_closed()` flag on acquire and recycles idle connections on a timer, so the
+  background poller _is_ the health check.
+- asyncpg **transparently recovers** from a server-side terminated backend:
+  after `pg_terminate_backend`, `pool.execute("SELECT 1")` succeeded on the
+  first retry. So a single failed poll is a failover blip, not an outage — which
+  is why the registry's failure threshold is 2 rather than 1.
+- **redis-py defaults to 10 retries with exponential jitter backoff** on
+  `ConnectionError`, which makes a "cheap" ping take many seconds against an
+  unreachable host regardless of `socket_connect_timeout`. Hence the dedicated
+  no-retry client. On the _ordinary_ client, set `health_check_interval=30` so
+  request-path traffic validates connections.
+- A liveness probe that checks the database is the standard mistake: a database
+  blip then restarts every replica, which does not fix the database.
+  Kubernetes' own docs warn this causes cascading failures. `/livez` reads no
+  dependency verdict; `/readyz` reads all of them.
+
 ## Service containers
 
 Pinned in `compose.yaml` and `.github/workflows/ci.yml`. Verified 2026-09-09 by
