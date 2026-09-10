@@ -3,6 +3,7 @@ go 1.27.1
 use (
 	./agent/agentd
 	./packages/chassis
+	./packages/db
 	./packages/schema/gen/go
 	./packages/schema/tools
 	./services/aigw

@@ -12,6 +12,13 @@ GO_MODULES  := $(shell go list -m -f '{{.Dir}}' 2>/dev/null)
 # precedence over these local defaults.
 DATABASE_URL ?= postgres://halyard:halyard@localhost:55432/halyard
 REDIS_URL    ?= redis://localhost:56379/0
+
+# The role services connect as. It is NOT the role migrations run as, and that
+# distinction is the whole tenant isolation control: the owner and any superuser
+# bypass row-level security silently (see db/migrations/00013). This password is
+# local-only, exactly like the halyard:halyard above, and the migration ships
+# the role NOLOGIN so nothing is granted a login by deploying.
+APP_DATABASE_URL ?= postgres://halyard_app:halyard_app@localhost:55432/halyard
 VERSION     := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT      := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 LDFLAGS     := -X main.version=$(VERSION) -X main.commit=$(COMMIT)
@@ -103,7 +110,8 @@ test-py: ## Python unit tests
 
 .PHONY: test-integration
 test-integration: ## Integration tests against Postgres + Redis (make services-up first)
-	DATABASE_URL="$(DATABASE_URL)" REDIS_URL="$(REDIS_URL)" uv run pytest -m integration
+	DATABASE_URL="$(DATABASE_URL)" APP_DATABASE_URL="$(APP_DATABASE_URL)" \
+		REDIS_URL="$(REDIS_URL)" uv run pytest -m integration
 
 .PHONY: services-up
 services-up: ## Start Postgres and Redis, waiting for health
@@ -161,6 +169,45 @@ gen-check: ## Fail if the checked-in bindings disagree with the schemas
 		exit 1; \
 	fi
 	@echo "  generated bindings match the schemas"
+
+# --------------------------------------------------------------- database
+
+.PHONY: db-migrate
+db-migrate: ## Apply pending migrations to $(DATABASE_URL)
+	@cd packages/db && DATABASE_URL="$(DATABASE_URL)" \
+		go run ./cmd/migrate -dir ../../db/migrations -command up
+
+.PHONY: db-status
+db-status: ## Show which migrations have been applied
+	@cd packages/db && DATABASE_URL="$(DATABASE_URL)" \
+		go run ./cmd/migrate -dir ../../db/migrations -command status
+
+.PHONY: db-validate
+db-validate: ## Check the migration files parse, without a database
+	@cd packages/db && go run ./cmd/migrate -dir ../../db/migrations -command validate
+
+.PHONY: db-setup
+db-setup: db-migrate ## Migrate, then give halyard_app a local login
+# The migration creates the role NOLOGIN and with no password, because a
+# credential in a migration is a credential in git. Granting login is an
+# operator action; locally it is this.
+	@psql "$(DATABASE_URL)" -q -c \
+		"alter role halyard_app with login password 'halyard_app'" \
+	  && echo "  halyard_app can log in locally: $(APP_DATABASE_URL)"
+
+.PHONY: db-reset
+db-reset: ## Drop and recreate the local database, then migrate
+# The counterpart to there being no `-- +goose Down` anywhere: migrations are
+# forward-only (SPEC §0 rule 6), so local iteration resets rather than rolls
+# back. Refuses to touch anything that is not the local compose database.
+	@case "$(DATABASE_URL)" in \
+	  *@localhost:55432/*|*@127.0.0.1:55432/*) ;; \
+	  *) echo "  refusing: DATABASE_URL is not the local compose database"; exit 1 ;; \
+	esac
+	@psql "$(DATABASE_URL)" -q -c \
+		"drop schema public cascade; create schema public; grant all on schema public to halyard" \
+	  && echo "  schema dropped"
+	@$(MAKE) --no-print-directory db-setup
 
 .PHONY: clean
 clean: ## Remove build output

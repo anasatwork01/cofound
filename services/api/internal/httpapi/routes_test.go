@@ -3,15 +3,18 @@ package httpapi_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/anasatwork01/cofound/packages/chassis"
 	"github.com/anasatwork01/cofound/packages/chassis/config"
 	"github.com/anasatwork01/cofound/packages/chassis/logging"
+	"github.com/anasatwork01/cofound/packages/db"
 	"github.com/anasatwork01/cofound/packages/schema/gen/go/common"
 
 	"github.com/anasatwork01/cofound/services/api/internal/httpapi"
@@ -28,6 +31,18 @@ func boot(t *testing.T, env map[string]string) (string, *logging.Sink) {
 	sink := logging.NewSink()
 
 	api := httpapi.New()
+	// Boot without Postgres. These tests assert on routing, the error envelope
+	// and the boot line; none of them issue a query, and requiring a live
+	// database would mean either adding Postgres to the `go` CI job or skipping
+	// them by default. The tenant isolation the pool actually guards is proven
+	// in tests/integration/test_tenancy.py and packages/db, against a real
+	// database and as the unprivileged role -- which is the only place it can
+	// be proven at all.
+	if env["DATABASE_URL"] == "" {
+		env["DATABASE_URL"] = "postgres://halyard_app:x@db.invalid:5432/halyard"
+	}
+	api.Open = func(context.Context, db.Config) (*db.Pool, error) { return nil, nil }
+
 	c, err := chassis.New(context.Background(), chassis.Options{
 		Service: chassis.Service{
 			Name: "api", Version: "test", Commit: "test",
@@ -92,20 +107,96 @@ func TestReadyzNamesProbesWithoutErrorStrings(t *testing.T) {
 	}
 }
 
-// TestReadyzIsReadyOnceDependenciesAreConfigured, so the negative test above
-// is not passing for an unrelated reason.
-func TestReadyzIsReadyOnceConfigured(t *testing.T) {
+// TestReadyzIsReadyAgainstARealDatabase, so the negative test above is not
+// passing for an unrelated reason.
+//
+// The contract changed in task 0.6 and this test changed with it. Readiness
+// used to mean "DATABASE_URL is set", which is a check on a string; it now
+// means "the database answered `select 1`", which is a check on the thing that
+// matters. The consequence is that this needs a real database, so it skips
+// without one rather than asserting something weaker.
+func TestReadyzIsReadyAgainstARealDatabase(t *testing.T) {
 	t.Parallel()
-	base, _ := boot(t, map[string]string{
-		"DATABASE_URL": "postgres://halyard:halyard@localhost:55432/halyard",
-		"REDIS_URL":    "redis://localhost:56379/0",
+	appURL := os.Getenv("APP_DATABASE_URL")
+	if appURL == "" {
+		if os.Getenv("CI") != "" && os.Getenv("DATABASE_URL") != "" {
+			// A skip here in the integration job would be a false green.
+			t.Fatal("APP_DATABASE_URL is unset but DATABASE_URL is set; the harness is misconfigured")
+		}
+		t.Skip("APP_DATABASE_URL unset; run `make db-setup`")
+	}
+
+	sink := logging.NewSink()
+	api := httpapi.New() // the real db.Open, deliberately
+	c, err := chassis.New(context.Background(), chassis.Options{
+		Service: chassis.Service{
+			Name: "api", Version: "test", Commit: "test",
+			Bind: api.Bind, Setup: api.Setup, Probes: api.Probes,
+		},
+		Lookup: config.MapLookup(map[string]string{
+			"HALYARD_ENV":  "development",
+			"DATABASE_URL": appURL,
+			"REDIS_URL":    "redis://localhost:56379/0",
+		}),
+		Out: sink,
 	})
-	resp, body := get(t, base+"/readyz")
+	if err != nil {
+		t.Fatalf("boot: %v", err)
+	}
+	// Chassis has no Close -- shutdown runs through Serve, which this test does
+	// not use -- so the pool is closed directly. Without this the test leaks a
+	// real connection pool for the rest of the run.
+	t.Cleanup(func() {
+		if api.DB != nil {
+			api.DB.Close()
+		}
+	})
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: c.Handler()}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+
+	resp, body := get(t, "http://"+ln.Addr().String()+"/readyz")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("readyz = %d, want 200: %s", resp.StatusCode, body)
 	}
 	if !strings.Contains(body, `"status":"ready"`) {
 		t.Errorf("body = %s", body)
+	}
+}
+
+// TestSetupRefusesAPrivilegedDatabaseRole. The service must not start with the
+// migration credentials: row-level security is inert for a superuser, so it
+// would serve traffic with no tenant isolation and no symptom.
+func TestSetupRefusesAPrivilegedDatabaseRole(t *testing.T) {
+	t.Parallel()
+	ownerURL := os.Getenv("DATABASE_URL")
+	if ownerURL == "" {
+		t.Skip("DATABASE_URL unset; run `make services-up`")
+	}
+
+	api := httpapi.New() // the real db.Open
+	_, err := chassis.New(context.Background(), chassis.Options{
+		Service: chassis.Service{
+			Name: "api", Version: "test", Commit: "test",
+			Bind: api.Bind, Setup: api.Setup, Probes: api.Probes,
+		},
+		Lookup: config.MapLookup(map[string]string{
+			"HALYARD_ENV":  "development",
+			"DATABASE_URL": ownerURL,
+			"REDIS_URL":    "redis://localhost:56379/0",
+		}),
+		Out: logging.NewSink(),
+	})
+	if err == nil {
+		t.Fatal("the service booted with a role that bypasses row-level security")
+	}
+	if !errors.Is(err, db.ErrPrivilegedRole) {
+		t.Fatalf("want ErrPrivilegedRole, got %v", err)
 	}
 }
 

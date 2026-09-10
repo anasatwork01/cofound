@@ -36,10 +36,16 @@ func NewBinder() *Binder { return &Binder{} }
 // REDIS_URL reports both in one boot rather than one per deploy cycle. Tasks
 // 0.6 and 0.7 extend this method.
 func (b *Binder) Bind(l *config.Loader) {
-	// Not required yet — task 0.6 introduces the pool and makes it so. Marked
-	// secret now, because the fingerprinting must be in place before the value
-	// ever exists.
-	if u := l.SecretURL(KeyDatabaseURL, false, "postgres", "postgresql"); u != nil {
+	// Required as of task 0.6: the service cannot serve a single endpoint
+	// without the control plane database, so starting without it and reporting
+	// unready forever is worse than refusing to start with a message that names
+	// the variable.
+	//
+	// It must be the UNPRIVILEGED role's connection string. Row-level security
+	// is inert for a superuser or a role with BYPASSRLS, so a deploy that reuses
+	// the migration credentials has no tenant isolation -- silently. db.Open
+	// refuses such a role rather than trusting this comment.
+	if u := l.SecretURL(KeyDatabaseURL, true, "postgres", "postgresql"); u != nil {
 		b.cfg.DatabaseURL = u.String()
 	}
 	if u := l.SecretURL(KeyRedisURL, false, "redis", "rediss"); u != nil {
