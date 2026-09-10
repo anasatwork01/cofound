@@ -34,14 +34,24 @@ func appURL(t *testing.T) string {
 	return ""
 }
 
+// skipOrFail decides whether a missing database URL is a skip or a bug.
+//
+// The first version of this reasoned "CI defines these, so a skip in CI would
+// be a false green" and called t.Fatal whenever CI was set. That was wrong and
+// CI caught it: the `go` job has CI=true and NO Postgres service, because these
+// two tests are the only Go tests in the repository that need one. Only the
+// `integration` job has a database.
+//
+// So the discriminator is DATABASE_URL, not CI. If it is set, we are in the
+// integration job and a missing APP_DATABASE_URL means the harness is broken —
+// which must fail, or the tenant isolation proof silently stops running. If
+// neither is set, there is no database here by design.
 func skipOrFail(t *testing.T, name string) {
 	t.Helper()
-	if os.Getenv("CI") != "" {
-		// A skip in CI would be a false green: CI defines these, so a missing
-		// value means the harness is broken and nothing was actually tested.
-		t.Fatalf("%s is unset in CI — the integration harness is misconfigured", name)
+	if os.Getenv("DATABASE_URL") != "" {
+		t.Fatalf("%s is unset but DATABASE_URL is set; the integration harness is misconfigured", name)
 	}
-	t.Skipf("%s unset; run `make db-setup` first", name)
+	t.Skipf("%s unset; these tests need Postgres. Run `make db-setup`, or see the integration CI job", name)
 }
 
 func openApp(t *testing.T) *db.Pool {
