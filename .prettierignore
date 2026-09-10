@@ -1,4 +1,9 @@
 agent/opencode/
+# docs/SPEC.md is an external contract, committed verbatim. Reformatting it
+# would rewrite a document nobody here is the author of, and would make a future
+# diff against a fresh copy unreadable. Its encoding is asserted by
+# scripts/check-structure.sh instead.
+docs/SPEC.md
 .claude/skills/
 packages/schema/gen/
 pnpm-lock.yaml

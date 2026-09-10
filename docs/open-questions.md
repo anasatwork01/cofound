@@ -6,18 +6,36 @@ code.
 
 ---
 
-## Q0 - The canonical SPEC.md is not in the repository
+## ~~Q0 - The canonical SPEC.md is not in the repository~~
 
-`docs/SPEC.md` is a placeholder. The spec arrived as a conversation document
-whose text had been through a UTF-8 → Latin-1 round trip, so transcribing it
-would have committed corrupted section markers and a destroyed architecture
-diagram into the file every other file cites.
+**Resolved 2026-09-10.** `docs/SPEC.md` now holds the canonical specification,
+1259 lines, and every `§`-citation in this repository resolves against it.
 
-**Needed:** `cp /path/to/SPEC.md docs/SPEC.md`. Same for `docs/mockup.html`,
-which SPEC §3.1 and §18 name as the source of the design tokens and which
-task 0.9 cannot start without.
+It was recovered from the original attachment rather than retyped, and the
+encoding damage was _reversed_ rather than corrected. That distinction is the
+whole reason this was safe to do:
 
-**Owner:** human. **Blocks:** nothing mechanically; blocks task 0.9 in practice.
+- The corruption was a single clean UTF-8 → Latin-1 → UTF-8 round trip. Such a
+  transformation is deterministic and lossless, so `t.encode('latin-1')
+.decode('utf-8')` recovers the original bytes exactly. Both steps were checked
+  for failure; either one erroring would have meant the damage was something
+  else and the repair had to stop.
+- **Proof it is a reversal and not a rewrite:** re-corrupting the repaired text
+  reproduces the input byte for byte. Nothing was edited by judgement.
+- Afterwards: 0 replacement characters, 24 clean `§`, 74 em dashes, and the
+  architecture diagram's 534 box-drawing characters restored. Before: 24
+  mojibake `§`, 655 broken sequences, 0 box-drawing characters.
+- The section numbering is unchanged: 24 top-level sections and 48
+  sub-sections, and every number cited anywhere in the repo is present.
+
+`scripts/check-structure.sh` now fails if the placeholder returns, if mojibake
+reappears, or if the section count changes — the three ways this could silently
+regress.
+
+**Still outstanding:** `docs/mockup.html`, which SPEC §3.1 and §18 name as the
+source of the design tokens. It was never supplied and is not recoverable from
+the attachment. **Owner:** human. **Blocks:** task 0.11 (console shell), which
+`docs/TASKS.md` marks blocked for this reason.
 
 ---
 
@@ -46,6 +64,63 @@ an integer; either is defensible, but the two spellings in §7.2 and §6 cannot
 both be right.
 
 **Owner:** human. **Blocks:** nothing today; phase 1 consumes both.
+
+---
+
+## Q2 - SPEC §6 references `template_versions` but never defines it
+
+`projects.template_version_id` is declared `references template_versions(id)`,
+and §7.1's `POST /v1/projects` takes a `template_version_id`, but no
+`create table template_versions` appears in §6. `packages/schema/api.openapi.yaml`
+models both `Template` and `TemplateVersion`, so the shape is known from the
+contract even though the DDL is absent.
+
+§6 opens with "Not exhaustive — add columns as needed", which licenses filling
+this in, so task 0.6 defines `templates` and `template_versions` from the
+committed OpenAPI models rather than blocking. Recorded here because it is a
+gap in the document rather than a decision, and because the next person to diff
+a fresh copy of §6 against `db/migrations` should know why there is a table in
+one and not the other.
+
+**Owner:** human, to confirm the derived shape. **Blocks:** nothing.
+
+---
+
+## Q3 - SPEC §8 requires rotating sessions but §6 defines no table for them
+
+§6's `sessions` table is _agent_ sessions — project, branch, sandbox, state. §8
+separately requires console sign-in with "httpOnly, `SameSite=Lax`, rotating
+cookies", which needs durable server-side session state and, for magic links, a
+single-use token table. Neither exists in §6.
+
+Task 0.7 adds them under §6's "not exhaustive" licence, named to avoid the
+collision with the existing `sessions` table. Recorded because the naming is a
+decision a reader of §6 alone would not expect.
+
+**Owner:** human, to confirm. **Blocks:** nothing.
+
+---
+
+## Q4 - Where console sign-in runs is not pinned down
+
+§7.1 says auth is "via session cookie (console) or bearer PAT (future CLI)" and
+lists no `/v1/auth/*` endpoints, so `api` clearly _verifies_ sessions. It does
+not say who _issues_ them. §8 says "Verify library choice (§22)", and §22 item
+14 asks about Auth.js / Better Auth — both JavaScript, which points at the
+Next.js console.
+
+That reading has a cost: the Go `api` service would then have to verify a
+session format issued by a JS library, so the two would share a session table
+and a hashing scheme by convention rather than by contract, and every upgrade of
+that library becomes a change to a Go service.
+
+Task 0.7 therefore issues and verifies sessions in `api`, which is the service
+§7.1 already requires to verify them, and leaves the console a thin caller. The
+§22 item 14 verification is still recorded in `docs/verified.md` because the
+decision for _generated apps_ (§21 decision 4) is separate and still open.
+
+**Owner:** human, to confirm or overrule. **Blocks:** nothing; 0.7 proceeds on
+the stated reading.
 
 ---
 
