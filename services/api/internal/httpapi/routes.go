@@ -9,10 +9,12 @@ import (
 	"github.com/anasatwork01/cofound/packages/chassis"
 	"github.com/anasatwork01/cofound/packages/chassis/config"
 	"github.com/anasatwork01/cofound/packages/chassis/health"
+	"github.com/anasatwork01/cofound/packages/chassis/httpx"
 	"github.com/anasatwork01/cofound/packages/db"
 
 	"github.com/anasatwork01/cofound/services/api/internal/audit"
 	"github.com/anasatwork01/cofound/services/api/internal/auth"
+	"github.com/anasatwork01/cofound/services/api/internal/idempotency"
 	"github.com/anasatwork01/cofound/services/api/internal/tenancy"
 	"github.com/anasatwork01/cofound/services/api/internal/v1"
 
@@ -132,6 +134,25 @@ func (a *API) Setup(ctx context.Context, rt *chassis.Runtime) (io.Closer, error)
 		Audit:         auth.DBAudit{Pool: pool},
 		ConsoleOrigin: cfg.ConsoleOrigin,
 	}
+	// Rate limits on the unauthenticated surface, keyed by peer.
+	//
+	// In-process, which divides the real limit by the number of replicas. That
+	// is correct for protecting one process and wrong for enforcing a quota, so
+	// the store is an interface and the shared implementation waits on SPEC §21
+	// decision 1 — the container host determines what it should be. Recorded in
+	// docs/open-questions.md rather than guessed at.
+	//
+	// Applied to the whole public subtree, not only to sign-in: an
+	// unauthenticated endpoint is by definition one anyone can reach.
+	rt.Mux.Public.Use((&httpx.RateLimiter{
+		// Ten a second sustained, thirty at once. A console page load is a
+		// dozen requests in a few hundred milliseconds and is not abuse; a
+		// script is.
+		Limit:  httpx.RateLimit{Rate: 10, Burst: 30},
+		Key:    httpx.KeyByIP,
+		Errors: rt.Errors,
+	}).Middleware)
+
 	a.Auth.Mount(rt.Mux.Public, rt.Errors)
 
 	// Tenancy (SPEC §8): every authenticated request resolves to
@@ -150,14 +171,24 @@ func (a *API) Setup(ctx context.Context, rt *chassis.Runtime) (io.Closer, error)
 	a.Tenancy = &tenancy.Resolver{Pool: pool, Auth: a.Auth}
 	rt.Mux.Authed.Use(a.Tenancy.Authenticate)
 
+	// And on the authenticated surface, keyed by tenant so one org cannot
+	// exhaust another's allowance. Higher, because a signed-in console is
+	// legitimately chatty.
+	rt.Mux.Authed.Use((&httpx.RateLimiter{
+		Limit:  httpx.RateLimit{Rate: 50, Burst: 200},
+		Key:    httpx.KeyByOrg,
+		Errors: rt.Errors,
+	}).Middleware)
+
 	// The /v1 surface. Every route declares its required role beside itself, so
 	// the permission a handler runs under is readable from one function rather
 	// than from the handler bodies.
 	a.V1 = &v1.Handlers{
-		Pool:      pool,
-		Tenancy:   a.Tenancy,
-		Audit:     audit.New(pool),
-		InviteTTL: v1.DefaultInviteTTL(),
+		Pool:       pool,
+		Tenancy:    a.Tenancy,
+		Audit:      audit.New(pool),
+		InviteTTL:  v1.DefaultInviteTTL(),
+		Idempotent: idempotency.New(pool, a.Tenancy).Wrap,
 	}
 	a.V1.Mount(rt.Mux.Authed, rt.Errors)
 
