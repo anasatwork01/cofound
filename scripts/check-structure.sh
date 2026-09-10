@@ -44,6 +44,30 @@ for f in "${required_files[@]}"; do
   [ -f "$f" ] || { echo "  MISSING FILE  $f"; fail=1; }
 done
 
+# docs/SPEC.md is the contract every other file cites by section number, and it
+# is committed verbatim from an external document. Two things can go wrong
+# silently: the placeholder could come back, and a copy could be pasted through
+# a UTF-8 -> Latin-1 round trip -- which is exactly what happened to the first
+# copy, turning every "\u00a7" into two characters and destroying the
+# architecture diagram. Both are cheap to detect and expensive to notice late.
+if ! grep -q '^## 6\. Data model' docs/SPEC.md; then
+  echo "  docs/SPEC.md has no section 6; is it still the placeholder?"
+  echo "  Every §-citation in this repository resolves against that document."
+  fail=1
+fi
+if grep -q 'Â' docs/SPEC.md; then
+  echo "  docs/SPEC.md contains mojibake (Â). It went through a UTF-8 -> Latin-1"
+  echo "  round trip. Recover with: python3 -c \"import io;"
+  echo "  p='docs/SPEC.md';t=io.open(p,encoding='utf-8').read();"
+  echo "  io.open(p,'w',encoding='utf-8').write(t.encode('latin-1').decode('utf-8'))\""
+  fail=1
+fi
+if [ "$(grep -c '^## ' docs/SPEC.md)" -ne 24 ]; then
+  echo "  docs/SPEC.md has $(grep -c '^## ' docs/SPEC.md) top-level sections, want 24."
+  echo "  Section numbers are cited throughout the codebase; renumbering breaks them."
+  fail=1
+fi
+
 # Every file scripts/gen_obs.py writes must exist and must say so. A generated
 # file that someone hand-edits and un-marks is a copy of the redaction denylist
 # that has quietly stopped tracking the source document.
