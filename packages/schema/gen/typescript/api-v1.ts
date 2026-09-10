@@ -679,6 +679,26 @@ export interface components {
         IdempotencyKey: string;
         Org: components["schemas"]["Slug"];
         Project: components["schemas"]["Slug"];
+        /**
+         * @description Which organisation the request is about, by slug.
+         *
+         *     SPEC 7.1's project paths take a project SLUG, and SPEC 6 makes a project
+         *     slug unique only WITHIN an org (`unique (org_id, slug)`). So
+         *     `/v1/projects/{project}` is ambiguous for a user who belongs to two orgs
+         *     that each have a project of that name — and 7.1 defines no way to say
+         *     which, even though SPEC 8 requires "org switching in the project
+         *     picker", which means the console has a current org to send.
+         *
+         *     Optional, so single-org callers stay on the path 7.1 specifies. A
+         *     request without it resolves across the caller's memberships and is
+         *     refused with `ambiguous_project` (409) only if genuinely ambiguous —
+         *     never served against a guess, because that would mean acting on the
+         *     wrong tenant's project. It also selects the org for routes that name
+         *     none, such as creating a project.
+         *
+         *     See docs/open-questions.md Q6.
+         */
+        OrgContext: components["schemas"]["Slug"];
         Session: components["schemas"]["Uuid"];
     };
     requestBodies: never;
