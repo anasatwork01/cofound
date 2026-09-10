@@ -11,7 +11,7 @@ required_dirs=(
   agent/opencode agent/patches agent/agentd agent/image agent/config
   capabilities/auth capabilities/payments capabilities/email capabilities/uploads
   templates
-  packages/schema packages/ui
+  packages/chassis packages/schema packages/ui
   db/migrations
   infra/cloudflare infra/modal
   docs
