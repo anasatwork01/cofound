@@ -39,11 +39,157 @@ security:
   - bearerToken: []
 
 tags:
+  - name: auth
   - name: orgs
   - name: projects
   - name: sessions
 
 paths:
+  # SPEC 7.1 lists no /auth paths, but SPEC 8 requires email magic link and
+  # Google OAuth sign-in, and 7.1 itself says auth is "via session cookie
+  # (console)" — so something has to issue that cookie. These are the endpoints
+  # task 0.7 adds; docs/open-questions.md Q4 records why they live in `api`
+  # rather than in the console.
+  #
+  # None of them is under `security`: they are how a caller GETS a session, so
+  # requiring one would be circular. That is why each declares `security: []`.
+  /auth/magic-link:
+    post:
+      operationId: requestMagicLink
+      tags: [auth]
+      summary: Email a sign-in link
+      description: |
+        Always answers 202, whether or not the address has an account. A
+        different response for a known address would turn this into a way to
+        test whether a given person has one.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  maxLength: 320
+      responses:
+        "202":
+          description: The request was accepted. No indication of whether an email was sent.
+        "422": { $ref: "#/components/responses/Invalid" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /auth/magic-link/verify:
+    post:
+      operationId: verifyMagicLink
+      tags: [auth]
+      summary: Exchange a link token for a session
+      description: |
+        Single-use. An unknown, spent or expired token is answered identically,
+        so the endpoint cannot be used to learn which a captured token was.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  minLength: 43
+                  maxLength: 43
+      responses:
+        "200":
+          description: |
+            Signed in. Sets the session cookie: httpOnly, SameSite=Lax and, in
+            production, Secure with the `__Host-` prefix (SPEC 8).
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthSession" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /auth/google/start:
+    get:
+      operationId: startGoogleSignIn
+      tags: [auth]
+      summary: Begin Google OAuth
+      description: |
+        Redirects to Google with a CSRF `state` and a PKCE challenge, both held
+        in short-lived httpOnly cookies. 404 when Google sign-in is not
+        configured, so a deployment without credentials degrades to magic links
+        rather than to a broken redirect.
+      security: []
+      responses:
+        "303":
+          description: Redirect to Google.
+          headers:
+            Location:
+              schema: { type: string, format: uri }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /auth/google/callback:
+    get:
+      operationId: completeGoogleSignIn
+      tags: [auth]
+      summary: Complete Google OAuth
+      security: []
+      parameters:
+        - name: code
+          in: query
+          schema: { type: string }
+        - name: state
+          in: query
+          schema: { type: string }
+        - name: error
+          in: query
+          description: Set by Google when the user declined.
+          schema: { type: string }
+      responses:
+        "303":
+          description: |
+            Redirect back into the console, signed in or not. A redirect rather
+            than a body because the browser arrives here by navigation.
+          headers:
+            Location:
+              schema: { type: string, format: uri }
+            Set-Cookie:
+              schema: { type: string }
+
+  /auth/session:
+    get:
+      operationId: getAuthSession
+      tags: [auth]
+      summary: Who am I
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthSession" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    delete:
+      operationId: signOut
+      tags: [auth]
+      summary: Sign out
+      description: |
+        Idempotent: signing out when already signed out answers 204. Clears the
+        cookie with attributes matching the ones it was set with, or the browser
+        treats it as a different cookie and leaves the original in place.
+      responses:
+        "204":
+          description: Signed out.
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+
   /orgs:
     post:
       operationId: createOrg
@@ -178,7 +324,7 @@ paths:
       responses:
         "201":
           description: Session created; the sandbox may still be starting.
-          content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AuthSession" } } }
         "402": { $ref: "#/components/responses/PaymentRequired" }
         "409": { $ref: "#/components/responses/Conflict" }
 
@@ -361,6 +507,29 @@ components:
           application/json:
             { schema: { $ref: "./common.schema.json#/components/schemas/ErrorResponse" } },
         }
+    Unauthenticated:
+      description: |
+        No valid session. One response for a missing cookie, an unknown token,
+        an expired session and a revoked one: the caller's next step is the same
+        in every case, and distinguishing them would say whether a captured
+        token was ever real.
+      content:
+        {
+          application/json:
+            { schema: { $ref: "./common.schema.json#/components/schemas/ErrorResponse" } },
+        }
+    RateLimited:
+      description: |
+        Too many requests. Carries Retry-After, so a client waits rather than
+        spinning (SPEC 18: an error says what to do about it).
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        {
+          application/json:
+            { schema: { $ref: "./common.schema.json#/components/schemas/ErrorResponse" } },
+        }
     PaymentRequired:
       description: |
         Insufficient credits to place a hold. SPEC 16.3: exhausting the build
@@ -373,6 +542,53 @@ components:
         }
 
   schemas:
+    AuthSession:
+      title: AuthSession
+      description: |
+        The signed-in user. Named AuthSession rather than Session because
+        `Session` already means an AGENT session here — a project, a branch, a
+        sandbox (SPEC 6) — and the two are unrelated. The same collision is why
+        migration 00014 calls its table `user_sessions`.
+
+        Deliberately NOT the session token or its id: the console needs neither,
+        and a body carrying one would put a credential into anything that
+        logged a response.
+      type: object
+      additionalProperties: false
+      required: [user, orgs]
+      properties:
+        user: { $ref: "#/components/schemas/AuthUser" }
+        orgs:
+          description: |
+            Every org the user belongs to, with their role in each. SPEC 8:
+            users may belong to many orgs, and the project picker switches
+            between them — so the console needs the whole list on load rather
+            than one request per org.
+          type: array
+          items: { $ref: "#/components/schemas/AuthOrgMembership" }
+
+    AuthUser:
+      title: AuthUser
+      type: object
+      additionalProperties: false
+      required: [id, email]
+      properties:
+        id: { $ref: "./common.schema.json#/components/schemas/Uuid" }
+        email: { type: string, format: email }
+        name: { type: [string, "null"] }
+
+    AuthOrgMembership:
+      title: AuthOrgMembership
+      description: One org the signed-in user belongs to, and their role in it.
+      type: object
+      additionalProperties: false
+      required: [id, slug, name, role]
+      properties:
+        id: { $ref: "./common.schema.json#/components/schemas/Uuid" }
+        slug: { $ref: "./common.schema.json#/components/schemas/Slug" }
+        name: { type: string }
+        role: { $ref: "./common.schema.json#/components/schemas/Role" }
+
     Org:
       type: object
       properties:

@@ -124,6 +124,32 @@ the stated reading.
 
 ---
 
+## Q5 - No transactional email provider is specified
+
+SPEC §8 requires "email magic link" sign-in, but neither §3's technology stack
+nor §22's verification list names a provider to send it with. §13's capability
+table has an `email` capability, but that is a capability offered to GENERATED
+apps, not the console's own transactional mail.
+
+Task 0.7 therefore ships a `Mailer` interface with one method — address and
+link, nothing provider-shaped — and a `LogMailer` default that writes the link
+instead of sending it. That default is safe to leave in place by accident: the
+link is marked as chassis user content, so it is redacted above debug level and
+a production deploy does not spray live sign-in links into a log pipeline. It is
+still the wrong thing to ship, which is why this is open.
+
+Working agreement 4 is the reason there is no half-written provider client here:
+choosing one now would mean writing against an API nobody has documented for
+this project, and the shapes providers impose (template ids, merge
+dictionaries, campaign identifiers) are exactly what a premature choice would
+bake into the interface.
+
+**Needed:** a provider, and a §22-style verification of its API in
+`docs/verified.md`. **Owner:** human. **Blocks:** sign-in working for a real
+user in a deployed environment. Nothing in phase 0.
+
+---
+
 ## Blocking decisions (SPEC §21) - needed before phase 1
 
 | #   | Decision                                                                                                    | Owner | Blocks    | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |

@@ -43,6 +43,14 @@ NO_POLICY_BY_DESIGN = {
     # A global identity that may belong to many orgs (SPEC §8), and sign-in must
     # find a user by email before any org is known.
     "users",
+    # Console authentication (migration 00014). Sign-in happens before any org
+    # is known and a user may belong to many orgs, so a policy would make
+    # authentication impossible rather than safer. These store only token
+    # HASHES, so a dump yields no usable credential -- that is the compensating
+    # control, and it is in the columns rather than in a policy.
+    "login_tokens",
+    "oauth_identities",
+    "user_sessions",
     # A global catalogue, identical for every tenant, granted SELECT only.
     "templates",
     "template_versions",
@@ -442,3 +450,60 @@ async def test_the_role_vocabulary_matches_the_shared_schema(
         f"org_members.role allows {sorted(in_db)} but common.schema.json's Role "
         f"is {sorted(in_schema)}"
     )
+
+
+# ------------------------------------------------- policy mode hardening
+
+
+async def test_every_tenant_table_has_a_restrictive_guard(
+    owner: asyncpg.Connection,
+) -> None:
+    """Migration 00015. Permissive policies OR; restrictive ones AND.
+
+    With only permissive policies, any policy added later WIDENS access. A
+    restrictive policy carrying the same org comparison is AND-ed with whatever
+    else exists, so the worst a careless addition can do is grant access the
+    tenant check then removes again.
+    """
+    rows = await owner.fetch(
+        """
+        select c.relname as name,
+               count(*) filter (where p.polpermissive)     as permissive,
+               count(*) filter (where not p.polpermissive) as restrictive
+        from pg_class c
+        join pg_namespace n on n.oid = c.relnamespace
+        join pg_policy p on p.polrelid = c.oid
+        where n.nspname = 'public' and c.relkind = 'r'
+        group by 1
+        order by 1
+        """
+    )
+    assert rows, "no policies found at all; is the schema migrated?"
+    missing = [r["name"] for r in rows if r["restrictive"] < 1]
+    assert not missing, (
+        f"these tables have no restrictive tenant guard: {missing}. A later "
+        "permissive policy could widen access on them."
+    )
+
+
+async def test_a_careless_permissive_policy_cannot_widen_access(
+    owner: asyncpg.Connection, app: asyncpg.Connection, two_orgs: tuple[str, str]
+) -> None:
+    """The failure migration 00015 exists to prevent, performed.
+
+    Adds exactly the policy someone would write for an internal admin view, and
+    asserts the tenant boundary survives it. Without the restrictive guard this
+    test would see both orgs' secrets.
+    """
+    a, b = two_orgs
+    await owner.execute("create policy careless_support_view on secrets using (true)")
+    try:
+        rows = await _scoped(app, a, "select org_id from secrets")
+        owners = {str(r["org_id"]) for r in rows}
+        assert owners == {a}, (
+            f"a permissive `using (true)` policy widened access to {owners}; "
+            "the restrictive guard from migration 00015 is missing or ineffective"
+        )
+        assert b not in owners
+    finally:
+        await owner.execute("drop policy careless_support_view on secrets")
