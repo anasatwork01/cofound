@@ -13,6 +13,7 @@ require (
 )
 
 require (
+	github.com/anasatwork01/cofound/packages/db v0.0.0
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
@@ -46,3 +47,5 @@ require (
 replace github.com/anasatwork01/cofound/packages/chassis => ../../packages/chassis
 
 replace github.com/anasatwork01/cofound/packages/schema/gen/go => ../../packages/schema/gen/go
+
+replace github.com/anasatwork01/cofound/packages/db => ../../packages/db

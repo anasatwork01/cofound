@@ -96,7 +96,13 @@ func NotFoundOnNoRows(err error, kind, ident string) *Error {
 }
 
 // isNoRows matches by string because the chassis must not depend on a database
-// driver. Task 0.6 adds pgx and can tighten this to errors.Is(err, pgx.ErrNoRows).
+// driver, and that stays true now that task 0.6 has added pgx: giving the
+// chassis a pgx dependency would make every service that never touches Postgres
+// -- and the chassis's own tests -- build it.
+//
+// packages/db.NotFoundOnNoRows is the precise version, using
+// errors.Is(err, pgx.ErrNoRows). A service that already imports that package
+// should prefer it; this remains for callers that do not.
 func isNoRows(err error) bool {
 	s := err.Error()
 	return strings.Contains(s, "no rows in result set") || strings.Contains(s, "sql: no rows")

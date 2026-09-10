@@ -410,6 +410,147 @@ and exempts streams.
   Kubernetes' own docs warn this causes cascading failures. `/livez` reads no
   dependency verdict; `/readyz` reads all of them.
 
+## Control plane database
+
+Verified 2026-09-11 for task 0.6, against the live Postgres 18.6 container and
+the Go module proxy. Every behavioural claim below was **executed**, not read:
+the scripts are reproduced by `tests/integration/test_tenancy.py` and
+`packages/db/db_test.go`, so a future Postgres upgrade that changes any of it
+fails the build.
+
+| Package                       | Pinned    | Why                                            |
+| ----------------------------- | --------- | ---------------------------------------------- |
+| `github.com/jackc/pgx/v5`     | `v5.11.0` | Latest. `pgxpool` is still the pool.           |
+| `github.com/pressly/goose/v3` | `v3.28.0` | Used as a **library**, not the CLI. See below. |
+| `github.com/exaring/otelpgx`  | `v0.12.0` | Query spans, pairs with otel-go 1.46.0.        |
+| `github.com/google/uuid`      | `v1.6.0`  | Test seeding only.                             |
+
+### Row-level security is inert for the role that owns the tables
+
+This is the finding the whole task turns on, and it fails **silently**.
+
+Connected as the table owner, a policy-scoped query returned **every row of
+every tenant** — no error, no warning, no clue in the result that a policy
+existed at all. And `alter table ... force row level security` did **not** fix
+it, because the role was also a superuser: `FORCE` subjects the _owner_ to
+policies but a `SUPERUSER` or `BYPASSRLS` role ignores them regardless.
+
+`compose.yaml`'s `halyard` role is `rolsuper=t, rolbypassrls=t`. So a service
+configured with the migration credentials has **no tenant isolation whatsoever**
+while looking perfectly healthy.
+
+Two mitigations, both in place, neither optional:
+
+1. Migration `00013` creates `halyard_app` — not the owner, not a superuser, no
+   `BYPASSRLS` — and services connect as that role. It ships `NOLOGIN` with no
+   password, because a credential in a migration is a credential in git.
+2. `db.Open` reads `rolsuper` and `rolbypassrls` at startup and **refuses to
+   return a pool** for a role that would bypass policies. There is no way to
+   detect this from the application's own queries — they simply return more rows
+   than they should — so the check has to happen before traffic does.
+   `packages/db/db_test.go::TestOpenRefusesAPrivilegedRole` asserts it.
+
+`tests/integration/test_tenancy.py::test_the_owner_would_see_everything` pins
+the trap itself as an executable fact, so "simplify the two roles into one"
+fails a test rather than shipping.
+
+### The naive policy expression works cold and breaks warm
+
+SPEC §6 writes `current_setting('app.org_id')::uuid`. Measured, in this order:
+
+| Connection state                 | `current_setting('app.org_id', true)` | `::uuid`                                        |
+| -------------------------------- | ------------------------------------- | ----------------------------------------------- |
+| never scoped                     | `NULL`                                | `NULL` — harmless                               |
+| after a scoped transaction ended | `''`                                  | **raises** `invalid input syntax for type uuid` |
+
+So the naive spelling passes on a cold connection and starts raising once the
+pool is warm — which is the worst possible failure shape, because it works in
+testing and breaks under traffic. `nullif(current_setting('app.org_id', true),
+'')::uuid` yields `NULL`, and a policy comparing against `NULL` matches **zero
+rows** with no error: it fails closed quietly rather than as a 500 on an
+unrelated endpoint.
+
+### `SET LOCAL` cannot be parameterised, and a plain `SET` leaks
+
+- `set local app.org_id = $1` is a **syntax error**. Building it by
+  concatenation would put a SQL injection in the one place that must not have
+  one, so `db.Scope` uses `set_config('app.org_id', $1, true)` — verified
+  identical in effect, and parameterised.
+- A `SET` _without_ `LOCAL` persists for the whole session. On a pooled
+  connection that means the next borrower inherits the previous request's org —
+  one tenant reading another's data with no code change and no error.
+  `db.Scope` therefore always opens a transaction, and there is no exported way
+  to set the org without one. `TestScopeDoesNotLeakOntoTheConnection` hammers 50
+  acquisitions to prove it.
+
+### Reaching the org through a parent table does not scale
+
+Sixteen tables in §6 carry `project_id` but no `org_id`, so §6's literal rule
+("enable RLS on every table with `org_id`") would leave `secrets` — the most
+sensitive table in the schema — with no policy. Measured on 100k rows / 1000
+projects / 200 orgs, reading one org's rows:
+
+| Policy shape                                                 | Time        | Plan                                                 |
+| ------------------------------------------------------------ | ----------- | ---------------------------------------------------- |
+| `org_id = current_org()`                                     | **0.36 ms** | Bitmap Index Scan                                    |
+| `project_id in (select id from projects where org_id = ...)` | 2.71 ms     | Index Only Scan, **99 500 rows discarded by filter** |
+| `exists (select 1 from projects ...)`                        | 77.24 ms    | **Seq Scan** + JIT                                   |
+
+The subquery forms do not use an index to _find_ the rows; they scan and
+discard, so their cost tracks the whole table rather than the tenant. At 100k
+rows that is 2.7 ms; at 10M it is not a policy, it is an outage.
+
+So `org_id` is denormalised onto every tenant-scoped table, under §6's own
+"Not exhaustive — add columns as needed". The integrity hole that would
+normally create — a row whose `org_id` disagrees with its parent's is invisible
+to its real owner and visible to someone else — is closed by a **composite
+foreign key** onto the parent's `(id, org_id)`, which is why `projects` carries
+an otherwise-redundant `unique (id, org_id)`. Verified: a mismatched insert is
+refused, and so is moving a project between orgs while children reference it.
+The result satisfies §6's RLS rule on **all 28** tenant tables rather than on
+ten of them.
+
+### `USING` alone governs writes too
+
+For a `FOR ALL` policy, Postgres reuses the `USING` expression as the check on
+rows being written when `WITH CHECK` is omitted. Verified: with `USING` only, an
+`INSERT` naming another org is refused with "new row violates row-level security
+policy", and so is an `UPDATE` that would move a row out of the current org. My
+initial assumption was the opposite; the test corrected it. Spelling it twice
+would add no protection and create two places to keep in step.
+
+Also verified: RLS **enabled with no policy at all denies everything**, so a
+table that gets `enable row level security` and no `create policy` fails closed
+rather than open. And a `DELETE` of an invisible row reports `DELETE 0` rather
+than erroring — so an unqualified `delete from secrets` as one tenant leaves
+every other tenant's rows untouched.
+
+### goose's CLI pulls a driver for every database it supports
+
+`github.com/pressly/goose/v3/cmd/goose` imports ClickHouse, MySQL, MSSQL,
+Vertica, YDB and SQLite drivers. Taking it as a `go tool` dependency put all of
+them in this module's graph for a Postgres-only control plane; `go mod tidy` was
+still resolving after several minutes and was abandoned.
+
+The goose **library** pulls none of that. `packages/db/cmd/migrate` is a ~100
+line binary using `goose.UpContext` over `database/sql` with pgx's `stdlib`
+driver: 209 modules total and **zero** other-database drivers, asserted by
+`make verify`'s structure step.
+
+Other goose facts confirmed: `up` takes a Postgres advisory lock, so two
+replicas deploying at once do not both apply a migration; and goose parses
+**any** line beginning with its annotation prefix, comment or not — a comment
+that merely _mentioned_ the rollback marker made the migration unparseable,
+which `make db-validate` caught.
+
+### Forward-only is enforced by absence
+
+No migration has a rollback section, and `make db-validate` fails the build if
+one appears. SPEC §0 rule 6 makes migrations forward-only, and the most reliable
+enforcement is for the rollback not to exist: a section that drops a table is one
+command away from deleting a tenant's history. Local iteration uses
+`make db-reset`, which refuses to run against anything but the compose database.
+
 ## Service containers
 
 Pinned in `compose.yaml` and `.github/workflows/ci.yml`. Verified 2026-09-09 by

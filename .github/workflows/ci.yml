@@ -162,21 +162,37 @@ jobs:
 
     env:
       DATABASE_URL: postgres://halyard:halyard@localhost:55432/halyard
+      # The role services connect as. NOT the migration role: row-level
+      # security is inert for a superuser, so a test running as the owner would
+      # pass while proving nothing. See db/migrations/00013.
+      APP_DATABASE_URL: postgres://halyard_app:halyard_app@localhost:55432/halyard
       REDIS_URL: redis://localhost:56379/0
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: tv
         run: ./scripts/tool-versions.sh >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ steps.tv.outputs.golang }}
+          cache-dependency-path: "**/go.sum"
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: ${{ steps.tv.outputs.python }}
           enable-cache: true
           cache-suffix: integration
       - run: uv sync --all-packages --locked
+      # Applies the schema and grants halyard_app a login. The tenancy tests
+      # assert against real tables, so there is nothing to test until this runs.
+      - run: make db-setup
       # pytest exits 5 when it collects nothing, so a harness that silently
       # stopped running these tests fails the job instead of reporting green.
       - run: make test-integration
+      # The Go half of the same proof: that db.Open refuses a role which would
+      # bypass row-level security, and that a scoped transaction cannot leak its
+      # org onto a pooled connection. Neither is testable without a database,
+      # which is why they run here rather than in the `go` job.
+      - run: cd packages/db && go test ./...
 
   ci:
     name: ci

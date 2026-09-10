@@ -11,7 +11,7 @@ required_dirs=(
   agent/opencode agent/patches agent/agentd agent/image agent/config
   capabilities/auth capabilities/payments capabilities/email capabilities/uploads
   templates
-  packages/chassis packages/pychassis packages/schema packages/ui
+  packages/chassis packages/db packages/pychassis packages/schema packages/ui
   db/migrations
   infra/cloudflare infra/modal
   docs
@@ -33,6 +33,8 @@ required_files=(
   scripts/doctor.sh scripts/check-structure.sh scripts/check-branch.sh
   scripts/tool-versions.sh
   .githooks/pre-push
+  db/migrations/00001_tenancy.sql
+  db/migrations/00013_row_level_security.sql
   docs/SPEC.md docs/TASKS.md docs/verified.md docs/open-questions.md
 )
 
@@ -78,6 +80,19 @@ while read -r out; do
     echo "  $out is a gen_obs.py output but is not marked DO NOT EDIT"; fail=1
   fi
 done < <(./scripts/gen_obs.py --outputs)
+
+# The migration runner uses goose as a LIBRARY, not its CLI: cmd/goose imports a
+# driver for every database goose supports, which put ClickHouse, MySQL, MSSQL,
+# Vertica and YDB in the dependency graph of a Postgres-only control plane. The
+# distinction is invisible in a diff, so assert the outcome instead.
+if [ -f packages/db/go.sum ]; then
+  if grep -qiE "clickhouse|go-sql-driver/mysql|denisenkom|vertica|ydb-go-sdk" packages/db/go.sum; then
+    echo "  packages/db has picked up a non-Postgres database driver."
+    echo "  Almost certainly github.com/pressly/goose/v3/cmd/goose crept back in;"
+    echo "  use the goose library from cmd/migrate instead. See docs/verified.md."
+    fail=1
+  fi
+fi
 
 # The agent submodule must stay pinned, never tracked on a moving branch (§11.1).
 if [ -f .gitmodules ]; then
