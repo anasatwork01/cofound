@@ -1,0 +1,252 @@
+{
+  "$schema": "./observability.schema.json",
+  "doc": [
+    "The observability vocabulary, shared by every Halyard service in every language.",
+    "",
+    "SPEC 17.3 asks for one trace and one log search that span five hops: console,",
+    "api, sandboxd, the sandbox, and the tool call. Two of those hops are Go and",
+    "two are Python. If the Go side writes org_id and the Python side writes orgId,",
+    "or if one tags spans halyard.org.id and the other halyard.org_id, that search",
+    "silently returns half the story — the worst possible failure for a debugging",
+    "tool, because it looks like an answer.",
+    "",
+    "The redaction lists have a sharper version of the same problem. A denylist that",
+    "exists in Go and is retyped in Python is a denylist that will be updated in Go",
+    "and not in Python, and the leak will surface in whichever service was forgotten.",
+    "packages/chassis/logging/tripwire.go said so before this file existed: 'two",
+    "copies will diverge, and the copy that goes stale will be the one guarding the",
+    "more important boundary.'",
+    "",
+    "So this is the single source. scripts/gen.sh compiles it into Go and Python",
+    "constants, docs and all, and make gen-check fails the build if the checked-in",
+    "output disagrees. Task 2.13's gitd pre-receive scanner reads secret_prefixes",
+    "from here rather than growing a third copy.",
+    "",
+    "Editing rule: change this file, run make gen, commit both. Never edit a",
+    "generated file."
+  ],
+  "constants": {
+    "redacted": {
+      "doc": "Replaces a secret value. Searchable on purpose: counting these tells you how often callers try to log credentials.",
+      "value": "[redacted]"
+    },
+    "suppressed_message": {
+      "doc": "Replaces a log message that contained a credential shape. The line is still emitted — dropping it entirely would hide the fact that something tried to log a secret, which is itself worth knowing.",
+      "value": "log line suppressed: it contained a credential-shaped literal"
+    }
+  },
+  "log_keys": {
+    "doc": [
+      "The closed vocabulary of structured log field names.",
+      "",
+      "It is closed so that a rename is one edit rather than a grep, and so that the",
+      "redaction audit test has something finite to iterate: every key here is",
+      "asserted not to be classified as a secret, which is what stops the denylist's",
+      "substring matching from silently swallowing a field a debugger needed."
+    ],
+    "groups": [
+      {
+        "name": "Process identity",
+        "keys": [
+          { "ident": "Service", "key": "service" },
+          { "ident": "Env", "key": "env" },
+          { "ident": "Version", "key": "version" },
+          { "ident": "Commit", "key": "commit" },
+          { "ident": "Instance", "key": "instance_id" }
+        ]
+      },
+      {
+        "name": "Correlation",
+        "doc": "SPEC 17.3 wants a trace spanning five hops; these are the fields that let a log search join onto it.",
+        "keys": [
+          { "ident": "RequestID", "key": "request_id" },
+          { "ident": "TraceID", "key": "trace_id" },
+          { "ident": "SpanID", "key": "span_id" },
+          { "ident": "Sampled", "key": "trace_sampled" }
+        ]
+      },
+      {
+        "name": "Tenancy",
+        "doc": "SPEC 17.3.",
+        "keys": [
+          { "ident": "OrgID", "key": "org_id" },
+          { "ident": "ProjectID", "key": "project_id" },
+          { "ident": "SessionID", "key": "session_id" },
+          { "ident": "Turn", "key": "turn" }
+        ]
+      },
+      {
+        "name": "Failure",
+        "keys": [
+          { "ident": "ErrorCode", "key": "error_code" },
+          { "ident": "Err", "key": "error" },
+          { "ident": "PanicValue", "key": "panic_value" },
+          { "ident": "Stack", "key": "stack" }
+        ]
+      },
+      {
+        "name": "HTTP",
+        "doc": "Route, never path: a raw path is unbounded cardinality and can carry a token or a user-chosen slug.",
+        "keys": [
+          { "ident": "HTTPMethod", "key": "http_method" },
+          { "ident": "HTTPRoute", "key": "http_route" },
+          { "ident": "HTTPStatus", "key": "http_status" },
+          { "ident": "HTTPBytes", "key": "http_bytes" },
+          { "ident": "DurationMS", "key": "duration_ms" },
+          { "ident": "ClientIP", "key": "client_ip" }
+        ]
+      },
+      {
+        "name": "General",
+        "keys": [
+          { "ident": "Component", "key": "component" },
+          { "ident": "Reason", "key": "reason" },
+          { "ident": "Phase", "key": "phase" },
+          { "ident": "Count", "key": "count" }
+        ]
+      },
+      {
+        "name": "Streams and shutdown",
+        "keys": [
+          { "ident": "StreamKind", "key": "stream_kind" },
+          { "ident": "StreamsOpen", "key": "streams_open" },
+          { "ident": "StreamsRemaining", "key": "streams_remaining" },
+          { "ident": "Clean", "key": "clean" }
+        ]
+      },
+      {
+        "name": "Readiness",
+        "keys": [
+          { "ident": "Probe", "key": "probe" },
+          { "ident": "ProbeState", "key": "probe_state" },
+          { "ident": "ProbeSince", "key": "probe_since" },
+          { "ident": "LatencyMS", "key": "latency_ms" }
+        ]
+      },
+      {
+        "name": "Boot",
+        "keys": [
+          { "ident": "Addr", "key": "addr" },
+          { "ident": "ConfigKey", "key": "config_key" }
+        ]
+      }
+    ]
+  },
+  "redaction": {
+    "deny_substrings": {
+      "doc": [
+        "Substrings that classify a log key as secret-bearing.",
+        "",
+        "Substring matching is deliberately broad: a new provider's SDK will invent a",
+        "field name nobody predicted, and over-redacting a field is recoverable while",
+        "leaking a credential is not."
+      ],
+      "values": [
+        "token",
+        "secret",
+        "password",
+        "passwd",
+        "authorization",
+        "auth",
+        "cookie",
+        "ciphertext",
+        "refresh",
+        "credential",
+        "signature",
+        "bearer",
+        "apikey",
+        "dek",
+        "key",
+        "dsn"
+      ]
+    },
+    "allow_exact": {
+      "doc": [
+        "Keys rescued from the denylist. Checked first.",
+        "",
+        "This list is load-bearing: without it \"key\" alone eats idempotency_key and",
+        "cache_key, and \"auth\" eats author. A test in each language ties it to the",
+        "log_keys vocabulary above, so a new field name that the denylist would",
+        "swallow fails the build rather than going quietly missing from your logs."
+      ],
+      "values": [
+        "idempotency_key",
+        "cache_key",
+        "event_key",
+        "key_id",
+        "public_key",
+        "kms_key_id",
+        "price_book_key",
+        "config_key",
+        "session_id",
+        "org_id",
+        "project_id",
+        "keyboard",
+        "monkey_patch",
+        "author",
+        "authored_at",
+        "authorized_at"
+      ]
+    },
+    "secret_prefixes": {
+      "doc": [
+        "Literal credential shapes, scanned for in the message text itself.",
+        "",
+        "This closes the one hole key matching cannot: a token interpolated into a",
+        "message by a library we do not own, as in",
+        "log.Printf(\"auth failed for token=%s\", tok).",
+        "",
+        "Literal prefixes only — no regular expressions. Measured at ~172ns with zero",
+        "allocations on a clean string in Go, which is cheap enough to run on every",
+        "line.",
+        "",
+        "Task 2.13's gitd pre-receive secret scanner reads this same list."
+      ],
+      "groups": [
+        { "name": "Stripe", "values": ["sk_live_", "sk_test_", "whsec_", "rk_live_"] },
+        { "name": "GitHub", "values": ["ghp_", "gho_", "github_pat_"] },
+        { "name": "Slack", "values": ["xoxb-", "xoxp-"] },
+        { "name": "AWS", "values": ["AKIA", "ASIA"] },
+        { "name": "Anthropic", "values": ["sk-ant-"] },
+        { "name": "Google", "values": ["AIza", "ya29."] },
+        { "name": "GitLab", "values": ["glpat-"] },
+        { "name": "A JWT header, base64", "values": ["eyJhbGciOi"] },
+        { "name": "A PEM private key block", "values": ["-----BEGIN "] },
+        {
+          "name": "Connection strings, which carry a password inline",
+          "values": ["postgres://", "postgresql://", "redis://", "rediss://", "mysql://", "amqp://"]
+        }
+      ]
+    }
+  },
+  "trace_keys": {
+    "doc": [
+      "Span attribute and baggage keys carrying the SPEC 17.3 tenancy tuple.",
+      "",
+      "Dotted segments follow OTel convention: an entity's id gets its own segment,",
+      "as in service.instance.id, and snake_case is reserved for multi-word leaves.",
+      "So halyard.org.id, not halyard.org_id."
+    ],
+    "span_attributes": [
+      { "ident": "OrgID", "key": "halyard.org.id" },
+      { "ident": "ProjectID", "key": "halyard.project.id" },
+      { "ident": "SessionID", "key": "halyard.session.id" },
+      { "ident": "Turn", "key": "halyard.turn" },
+      { "ident": "RequestID", "key": "halyard.request.id" },
+      { "ident": "ErrorCode", "key": "halyard.error.code" },
+      { "ident": "StreamKind", "key": "halyard.stream.kind" }
+    ],
+    "baggage": {
+      "doc": [
+        "Identical strings to the span attributes, named separately so a future",
+        "divergence is expressible without a silent rename."
+      ],
+      "members": [
+        { "ident": "OrgID", "key": "halyard.org.id" },
+        { "ident": "ProjectID", "key": "halyard.project.id" },
+        { "ident": "SessionID", "key": "halyard.session.id" },
+        { "ident": "Turn", "key": "halyard.turn" }
+      ]
+    }
+  }
+}

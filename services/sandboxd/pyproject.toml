@@ -3,7 +3,10 @@ name = "halyard-sandboxd"
 version = "0.0.0"
 description = "Modal sandbox lifecycle, warm pool, snapshots, tunnels"
 requires-python = ">=3.12"
-dependencies = []
+# The chassis brings FastAPI, uvicorn, pydantic and OpenTelemetry, pinned in
+# one place. Modal, and anything else this service needs, is added by the task
+# that first needs it, after the relevant SPEC §22 fact is verified.
+dependencies = ["halyard-chassis"]
 
 [build-system]
 requires = ["hatchling"]

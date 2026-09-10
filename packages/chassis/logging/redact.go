@@ -15,32 +15,14 @@
 //     unknown provider's format still leaks.
 //   - Raising the level to debug deliberately reveals user content. That is a
 //     privacy action, not a verbosity tweak.
+//
+// The vocabulary this file applies — the denylist, the allowlist and the
+// credential prefixes — is generated into vocab.gen.go from
+// packages/schema/observability.json, so the Python chassis and task 2.13's
+// pre-receive scanner match it by construction rather than by review.
 package logging
 
 import "strings"
-
-// Redacted replaces a secret value.
-const Redacted = "[redacted]"
-
-// denySubstrings classify a key as secret-bearing. Substring matching is
-// deliberately broad: a new provider's SDK will invent a field name nobody
-// predicted, and over-redacting a field is recoverable while leaking a
-// credential is not.
-var denySubstrings = []string{
-	"token", "secret", "password", "passwd", "authorization", "auth",
-	"cookie", "ciphertext", "refresh", "credential", "signature",
-	"bearer", "apikey", "dek", "key", "dsn",
-}
-
-// allowExact rescues keys the denylist would otherwise swallow. Checked first.
-// This list is load-bearing: without it "key" alone eats idempotency_key and
-// cache_key, and "auth" eats author. A test ties it to logkey.All().
-var allowExact = []string{
-	"idempotency_key", "cache_key", "event_key", "key_id",
-	"public_key", "kms_key_id", "price_book_key", "config_key",
-	"session_id", "org_id", "project_id",
-	"keyboard", "monkey_patch", "author", "authored_at", "authorized_at",
-}
 
 // IsSecretKey reports whether a value logged under key must be redacted.
 func IsSecretKey(key string) bool {

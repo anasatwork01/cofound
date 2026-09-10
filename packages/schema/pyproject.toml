@@ -1,0 +1,19 @@
+[project]
+name = "halyard-schema"
+version = "0.0.0"
+description = "Generated Python bindings for the Halyard contracts"
+requires-python = ">=3.12"
+# pydantic is a real runtime dependency: the generated modules are pydantic v2
+# models, not plain dataclasses. The version is pinned in the root pyproject's
+# dev group and resolved once for the whole workspace.
+dependencies = ["pydantic>=2.9"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# The package is generated output under gen/, which scripts/gen.sh deletes and
+# rewrites on every run. This file lives above that directory on purpose, so
+# regenerating cannot remove the manifest that makes the result importable.
+[tool.hatch.build.targets.wheel]
+packages = ["gen/python/halyard_schema"]
