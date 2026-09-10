@@ -766,6 +766,58 @@ A member who lacks the role gets 403, because they have already been shown the
 org exists. Hiding the reason there would only leave the console unable to
 explain why a button did nothing, and the refusal names the role required.
 
+## Org and project surface
+
+Verified 2026-09-11 for task 0.9. Three findings, all from failing tests.
+
+### An unscoped read returns nothing once a table has a policy
+
+`/v1/auth/session` listed the caller's orgs with an unscoped query. That worked
+until migration `00016` gave `orgs` and `org_members` policies — after which it
+returned **zero rows silently**, so the console would have rendered an org
+switcher with nothing in it and no error anywhere. The query now runs in a user
+scope.
+
+The general shape is worth stating: **adding a policy to a table breaks every
+unscoped read of it, and breaks them quietly.** `Pool.Unscoped` is named to be
+conspicuous in review for exactly this reason, and every remaining use of it is
+either a table with no policy (`users`, the catalogue) or a lookup whose
+authorisation is a token rather than a scope (accepting an invite).
+
+### Excluding archived rows in the resolver made them unreachable
+
+The tenancy resolver filtered `archived_at is null`, which meant an archived
+project could not be fetched **at all** — not even to see that it was archived,
+though the `Project` schema has an `archived_at` field — and a repeated
+`DELETE` returned 404 rather than being idempotent.
+
+Which rows are hidden is a decision for each handler, not for the thing that
+resolves identity. `listProjects` filters; `getProject` does not.
+
+### `enum` without `type` generates an untyped value
+
+`GitAuthority` was declared with `title` and `enum` but no `type`, which is
+valid JSON Schema. oapi-codegen emitted `type GitAuthority = interface{}` — an
+untyped value for a two-member enum, giving a Go client nothing to switch on and
+a TypeScript client no union. Adding `type: string` produces the constants and a
+`Valid()` method. Worth checking any other enum declared the same way.
+
+### Rules the database enforces rather than the handler
+
+- **An org's creation and its first membership are one transaction.** An org
+  with no members is unreachable by anyone, including the person who just made
+  it.
+- **The last owner cannot be removed or demoted.** An org with no owner has
+  nobody who can bill it, delete it or transfer it (§8) — it is
+  unadministerable, and the person clicking the button is not usually intending
+  that.
+- **An admin cannot invite, remove or promote an owner.** Otherwise "everything
+  except billing and delete" includes manufacturing someone who can do both,
+  which makes the carve-out decorative.
+- **One live invitation per address per org**, by partial unique index. Clicking
+  "invite" twice otherwise sends two links, and accepting the older one after
+  the newer was revoked is a confusing way to end up with the wrong role.
+
 ## Service containers
 
 Pinned in `compose.yaml` and `.github/workflows/ci.yml`. Verified 2026-09-09 by

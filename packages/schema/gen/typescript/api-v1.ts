@@ -163,6 +163,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs/{org}/members/{user}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org: components["parameters"]["Org"];
+                user: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * @description SPEC 8 audits "member removal". Requires `admin`; only an `owner` may
+         *     remove an owner, and the last owner cannot be removed at all.
+         */
+        delete: operations["removeOrgMember"];
+        options?: never;
+        head?: never;
+        /**
+         * @description SPEC 8 audits "role change", which requires it to be possible. Requires
+         *     `admin`; only an `owner` may grant or revoke ownership, or an admin
+         *     could manufacture someone able to do the two things 8 reserves.
+         *
+         *     Refuses to demote the last owner: an org with no owner has nobody who
+         *     can bill, delete or transfer it.
+         */
+        patch: operations["changeMemberRole"];
+        trace?: never;
+    };
+    "/invites/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Redeems an invitation token. SPEC 8 requires invitations, and an
+         *     invitation nobody can accept is not one.
+         *
+         *     Authenticated but NOT org-scoped: the invitee is not a member yet, which
+         *     is the whole point, so the token is the authorisation. Single-use, and
+         *     unknown, spent, revoked and expired are one answer so the endpoint
+         *     cannot be used to learn which a captured token was.
+         */
+        post: operations["acceptInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/templates": {
         parameters: {
             query?: never;
@@ -183,11 +239,40 @@ export interface paths {
     "/projects": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Which organisation the request is about, by slug.
+                 *
+                 *     SPEC 7.1's project paths take a project SLUG, and SPEC 6 makes a project
+                 *     slug unique only WITHIN an org (`unique (org_id, slug)`). So
+                 *     `/v1/projects/{project}` is ambiguous for a user who belongs to two orgs
+                 *     that each have a project of that name — and 7.1 defines no way to say
+                 *     which, even though SPEC 8 requires "org switching in the project
+                 *     picker", which means the console has a current org to send.
+                 *
+                 *     Optional, so single-org callers stay on the path 7.1 specifies. A
+                 *     request without it resolves across the caller's memberships and is
+                 *     refused with `ambiguous_project` (409) only if genuinely ambiguous —
+                 *     never served against a guess, because that would mean acting on the
+                 *     wrong tenant's project. It also selects the org for routes that name
+                 *     none, such as creating a project.
+                 *
+                 *     See docs/open-questions.md Q6.
+                 */
+                "X-Halyard-Org"?: components["parameters"]["OrgContext"];
+            };
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * @description Not in SPEC 7.1, which jumps from creating a project to fetching one by
+         *     slug. The console cannot render a project picker without it, and SPEC 8
+         *     puts org switching in that picker.
+         *
+         *     Archived projects are omitted. They remain reachable by slug, so the
+         *     console can still show one that was archived by mistake.
+         */
+        get: operations["listProjects"];
         put?: never;
         /**
          * @description SPEC 7.1 takes either a template version or a prompt, never both: with a
@@ -205,7 +290,28 @@ export interface paths {
     "/projects/{project}": {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Which organisation the request is about, by slug.
+                 *
+                 *     SPEC 7.1's project paths take a project SLUG, and SPEC 6 makes a project
+                 *     slug unique only WITHIN an org (`unique (org_id, slug)`). So
+                 *     `/v1/projects/{project}` is ambiguous for a user who belongs to two orgs
+                 *     that each have a project of that name — and 7.1 defines no way to say
+                 *     which, even though SPEC 8 requires "org switching in the project
+                 *     picker", which means the console has a current org to send.
+                 *
+                 *     Optional, so single-org callers stay on the path 7.1 specifies. A
+                 *     request without it resolves across the caller's memberships and is
+                 *     refused with `ambiguous_project` (409) only if genuinely ambiguous —
+                 *     never served against a guess, because that would mean acting on the
+                 *     wrong tenant's project. It also selects the org for routes that name
+                 *     none, such as creating a project.
+                 *
+                 *     See docs/open-questions.md Q6.
+                 */
+                "X-Halyard-Org"?: components["parameters"]["OrgContext"];
+            };
             path: {
                 project: components["parameters"]["Project"];
             };
@@ -462,7 +568,7 @@ export interface components {
          *     linked it becomes authoritative and the internal store is a cache plus
          *     outbound queue. Dual authority on one branch is a split-brain bug
          *     factory; do not build it.
-         * @enum {unknown}
+         * @enum {string}
          */
         GitAuthority: "internal" | "github";
         Branch: {
@@ -938,6 +1044,94 @@ export interface operations {
             422: components["responses"]["Invalid"];
         };
     };
+    removeOrgMember: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Replaying a key returns the original response instead of acting twice (SPEC 7.1, 17.2). */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                org: components["parameters"]["Org"];
+                user: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    changeMemberRole: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Replaying a key returns the original response instead of acting twice (SPEC 7.1, 17.2). */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                org: components["parameters"]["Org"];
+                user: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    role: components["schemas"]["Role"];
+                };
+            };
+        };
+        responses: {
+            /** @description Changed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    acceptInvite: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Replaying a key returns the original response instead of acting twice (SPEC 7.1, 17.2). */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Joined. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
     listTemplates: {
         parameters: {
             query?: never;
@@ -960,10 +1154,75 @@ export interface operations {
             };
         };
     };
+    listProjects: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Which organisation the request is about, by slug.
+                 *
+                 *     SPEC 7.1's project paths take a project SLUG, and SPEC 6 makes a project
+                 *     slug unique only WITHIN an org (`unique (org_id, slug)`). So
+                 *     `/v1/projects/{project}` is ambiguous for a user who belongs to two orgs
+                 *     that each have a project of that name — and 7.1 defines no way to say
+                 *     which, even though SPEC 8 requires "org switching in the project
+                 *     picker", which means the console has a current org to send.
+                 *
+                 *     Optional, so single-org callers stay on the path 7.1 specifies. A
+                 *     request without it resolves across the caller's memberships and is
+                 *     refused with `ambiguous_project` (409) only if genuinely ambiguous —
+                 *     never served against a guess, because that would mean acting on the
+                 *     wrong tenant's project. It also selects the org for routes that name
+                 *     none, such as creating a project.
+                 *
+                 *     See docs/open-questions.md Q6.
+                 */
+                "X-Halyard-Org"?: components["parameters"]["OrgContext"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The org's projects. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        projects: components["schemas"]["Project"][];
+                        page: components["schemas"]["Page"];
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
     createProject: {
         parameters: {
             query?: never;
             header?: {
+                /**
+                 * @description Which organisation the request is about, by slug.
+                 *
+                 *     SPEC 7.1's project paths take a project SLUG, and SPEC 6 makes a project
+                 *     slug unique only WITHIN an org (`unique (org_id, slug)`). So
+                 *     `/v1/projects/{project}` is ambiguous for a user who belongs to two orgs
+                 *     that each have a project of that name — and 7.1 defines no way to say
+                 *     which, even though SPEC 8 requires "org switching in the project
+                 *     picker", which means the console has a current org to send.
+                 *
+                 *     Optional, so single-org callers stay on the path 7.1 specifies. A
+                 *     request without it resolves across the caller's memberships and is
+                 *     refused with `ambiguous_project` (409) only if genuinely ambiguous —
+                 *     never served against a guess, because that would mean acting on the
+                 *     wrong tenant's project. It also selects the org for routes that name
+                 *     none, such as creating a project.
+                 *
+                 *     See docs/open-questions.md Q6.
+                 */
+                "X-Halyard-Org"?: components["parameters"]["OrgContext"];
                 /** @description Replaying a key returns the original response instead of acting twice (SPEC 7.1, 17.2). */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
@@ -993,7 +1252,28 @@ export interface operations {
     getProject: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Which organisation the request is about, by slug.
+                 *
+                 *     SPEC 7.1's project paths take a project SLUG, and SPEC 6 makes a project
+                 *     slug unique only WITHIN an org (`unique (org_id, slug)`). So
+                 *     `/v1/projects/{project}` is ambiguous for a user who belongs to two orgs
+                 *     that each have a project of that name — and 7.1 defines no way to say
+                 *     which, even though SPEC 8 requires "org switching in the project
+                 *     picker", which means the console has a current org to send.
+                 *
+                 *     Optional, so single-org callers stay on the path 7.1 specifies. A
+                 *     request without it resolves across the caller's memberships and is
+                 *     refused with `ambiguous_project` (409) only if genuinely ambiguous —
+                 *     never served against a guess, because that would mean acting on the
+                 *     wrong tenant's project. It also selects the org for routes that name
+                 *     none, such as creating a project.
+                 *
+                 *     See docs/open-questions.md Q6.
+                 */
+                "X-Halyard-Org"?: components["parameters"]["OrgContext"];
+            };
             path: {
                 project: components["parameters"]["Project"];
             };
@@ -1017,6 +1297,26 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                /**
+                 * @description Which organisation the request is about, by slug.
+                 *
+                 *     SPEC 7.1's project paths take a project SLUG, and SPEC 6 makes a project
+                 *     slug unique only WITHIN an org (`unique (org_id, slug)`). So
+                 *     `/v1/projects/{project}` is ambiguous for a user who belongs to two orgs
+                 *     that each have a project of that name — and 7.1 defines no way to say
+                 *     which, even though SPEC 8 requires "org switching in the project
+                 *     picker", which means the console has a current org to send.
+                 *
+                 *     Optional, so single-org callers stay on the path 7.1 specifies. A
+                 *     request without it resolves across the caller's memberships and is
+                 *     refused with `ambiguous_project` (409) only if genuinely ambiguous —
+                 *     never served against a guess, because that would mean acting on the
+                 *     wrong tenant's project. It also selects the org for routes that name
+                 *     none, such as creating a project.
+                 *
+                 *     See docs/open-questions.md Q6.
+                 */
+                "X-Halyard-Org"?: components["parameters"]["OrgContext"];
                 /** @description Replaying a key returns the original response instead of acting twice (SPEC 7.1, 17.2). */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };

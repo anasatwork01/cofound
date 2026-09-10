@@ -199,6 +199,12 @@ func (rs *Resolver) byOrgSlug(ctx context.Context, userID uuid.UUID, slug string
 
 // byProjectSlug resolves `/v1/projects/{project}/...`.
 //
+// Archived projects ARE resolved. Excluding them made an archived project
+// entirely unreachable — you could not GET one to see that it was archived,
+// even though the Project schema has an `archived_at` field — and it made a
+// repeated DELETE 404 rather than being idempotent. Which projects are hidden
+// is a decision for each handler: listProjects filters, getProject does not.
+//
 // The ambiguity §7.1 leaves open is handled here rather than assumed away. With
 // the org header, the lookup is exact. Without it, the project is resolved
 // across the caller's memberships — and if more than one matches, the request
@@ -236,7 +242,7 @@ func (rs *Resolver) byProjectSlug(ctx context.Context, userID uuid.UUID, slug, o
 		err := rs.Pool.ScopeOrgAndUser(ctx, c.id.String(), userID.String(),
 			func(ctx context.Context, tx pgx.Tx) error {
 				return tx.QueryRow(ctx,
-					`select id from projects where slug = $1 and archived_at is null`,
+					`select id from projects where slug = $1`,
 					slug).Scan(&m.ProjectID)
 			})
 		switch {
@@ -330,7 +336,7 @@ func (rs *Resolver) byProjectAndOrg(ctx context.Context, userID uuid.UUID, slug,
 	err = rs.Pool.ScopeOrgAndUser(ctx, m.OrgID.String(), userID.String(),
 		func(ctx context.Context, tx pgx.Tx) error {
 			return tx.QueryRow(ctx,
-				`select id from projects where slug = $1 and archived_at is null`,
+				`select id from projects where slug = $1`,
 				slug).Scan(&m.ProjectID)
 		})
 	if err != nil {
