@@ -7,6 +7,7 @@ import type { ReactNode } from "react"
 // `api.openapi.yaml` puts credits in phase 4 — so the gauge shows an explicit
 // unknown state until task 4.9 gives it something real to read.
 import { TopBar } from "@halyard/ui"
+import { mono, sans } from "./fonts"
 import { Providers } from "@/providers/providers"
 
 export const metadata: Metadata = {
@@ -16,7 +17,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    // The font variables carry the loaded families down to the token layer,
+    // which names them in --font-sans / --font-mono with a metric-matched
+    // fallback behind each.
+    <html lang="en" className={`${sans.variable} ${mono.variable}`}>
       <body className="min-h-dvh bg-surface font-sans text-ink">
         <Providers>
           {/* SPEC §18: keyboard-navigable throughout. Without this, reaching

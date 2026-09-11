@@ -32,28 +32,19 @@ whole reason this was safe to do:
 reappears, or if the section count changes — the three ways this could silently
 regress.
 
-**Still outstanding:** `docs/mockup.html`, which SPEC §3.1 and §18 name as the
-source of the design tokens. It was never supplied and is not recoverable from
-the attachment. **Owner:** human.
+**Now resolved too.** `docs/mockup.html` was never supplied and was not
+recoverable from the attachment, so on 2026-09-12 it was **authored** rather
+than waited for, with the human's explicit instruction to "implement
+docs/mockup.html yourself or implement without it".
 
-**Task 0.11 shipped anyway, deliberately.** SPEC §18 specifies the console's
-_structure_ completely — all twelve routes verbatim, the persistent chrome, the
-three-state colour semantics, the copy rules, streaming, the write lease and the
-accessibility floor — and only the token _values_ need the mockup. So 0.11 built
-the structure and quarantined the values in
-`packages/ui/src/tokens/palette.css`, the only file in the repository permitted
-to contain a colour literal.
+Authoring it was the better of the two, because SPEC §3.1 and §18 both
+_reference_ that path: without the file those references dangle permanently and
+the token layer stays provisional forever. The console's design system is now
+extracted from it, and the quarantine plus contrast machinery task 0.11 built
+for the swap is what made the swap a genuine one-file change.
 
-That quarantine is enforced, not promised:
-`tests/console/tokens-quarantine.test.ts` fails on any colour literal, Tailwind
-built-in colour utility, arbitrary value or direct `--raw-*` reference outside
-that file, and `tests/console/contrast.test.ts` asserts every semantic pair
-clears SPEC §18's 4.5:1 — so when the mockup lands the swap is **one file, and
-checked rather than trusted**.
-
-What the mockup is still needed for: the actual values, the type scale and
-density, and whatever §21 decision 9 settles. `packages/ui/DESIGN.md` documents
-the two-tier structure and the exact steps to swap it in.
+**It answers SPEC §21 decision 9 by implication, and that is recorded rather
+than smuggled in** — see the note under that decision below.
 
 ---
 
@@ -699,7 +690,7 @@ the console half of 0.12 does not depend on this at all.
 | 6   | Credit denomination, retail price per credit, target gross margin                                           | human | 4.1       | SPEC §16.6: a normal turn should cost tens of credits. Never display fractions                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | 7   | Whether the free tier may publish to a custom domain                                                        | human | 4.10, 3.6 | **The main abuse lever.** Answer before phase 3 ships, not after                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | 8   | Revenue share on Stripe Connect (`application_fee_amount`)                                                  | human | 5.7       |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| 9   | Whether the console targets primarily non-technical users                                                   | human | 0.9       | The mockup assumes semi-technical. A purely non-technical audience needs warmer visuals and less code exposure - this changes the token layer, so decide before 0.9                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 9   | Whether the console targets primarily non-technical users                                                   | human | 0.9       | **Answered by implication, open to overrule.** SPEC §21.9 itself says "the mockup assumes semi-technical", and task L.5 authored the mockup on that assumption — so the shipped design targets a semi-technical founder. A purely non-technical audience would mean a warmer palette and less code exposure (the SHA in small mono on `/ship`, the file counts in the builder). That is a re-extraction of `palette.css` plus a copy pass, not a rebuild. Say the word and it changes.                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 ## Long-lead items to start immediately
 

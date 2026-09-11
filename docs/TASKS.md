@@ -15,13 +15,13 @@ Status: `todo` · `blocked` · `wip` · `done`
 
 External approval queues run in weeks, and phase 6 stalls without them.
 
-| ID  | Task                                                                                                                                                      | Status |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| L.1 | Apply for a Google Ads API developer token (§22.9)                                                                                                        | todo   |
-| L.2 | Start Meta App Review + Business Verification (§22.10)                                                                                                    | todo   |
-| L.3 | Apply for a Stripe Connect platform account (§22.11)                                                                                                      | todo   |
-| L.4 | Answer the nine SPEC §21 decisions - see `docs/open-questions.md`                                                                                         | todo   |
-| L.5 | Commit the canonical `docs/SPEC.md` and `docs/mockup.html` (Q0). SPEC.md **done**; **`mockup.html` still outstanding and now blocking real token values** | todo   |
+| ID  | Task                                                              | Status   |
+| --- | ----------------------------------------------------------------- | -------- |
+| L.1 | Apply for a Google Ads API developer token (§22.9)                | todo     |
+| L.2 | Start Meta App Review + Business Verification (§22.10)            | todo     |
+| L.3 | Apply for a Stripe Connect platform account (§22.11)              | todo     |
+| L.4 | Answer the nine SPEC §21 decisions - see `docs/open-questions.md` | todo     |
+| L.5 | Commit the canonical `docs/SPEC.md` and `docs/mockup.html` (Q0)   | **done** |
 
 ---
 
@@ -42,7 +42,7 @@ list on a real deployed URL._
 | 0.8  | Tenancy middleware: resolve `(user_id, org_id, role)` once, role matrix in one place, never inline                                                                                                                                                                                                                                                                                            | 0.7                  | **done**    |
 | 0.9  | Org + project CRUD, invites, org switching, `audit_log` writer covering SPEC §8's list                                                                                                                                                                                                                                                                                                        | 0.8                  | **done**    |
 | 0.10 | `Idempotency-Key` middleware, structured error contract, edge rate limiting                                                                                                                                                                                                                                                                                                                   | 0.4                  | **done**    |
-| 0.11 | Console shell: Next.js App Router, Tailwind token layer (**provisional values** - `docs/mockup.html` does not exist, see L.5/Q0; structure real, values quarantined in one file and enforced by tests), SPEC §18 route skeleton, TanStack Query, Zustand, top-bar chrome                                                                                                                      | 0.3, L.5, §21.9      | **done\***  |
+| 0.11 | Console shell: Next.js App Router, Tailwind token layer extracted from `docs/mockup.html`, SPEC §18 route skeleton, TanStack Query, Zustand, top-bar chrome                                                                                                                                                                                                                                   | 0.3, L.5, §21.9      | **done**    |
 | 0.12 | First deployed environment: console on Workers via OpenNext (**done**: staging + production wrangler envs, gated deploy workflow, verified OpenNext build), one Go service on the chosen container host (**blocked on §21.1**; the image is built, tested and host-agnostic). **Hyperdrive is not needed here** - it is a Workers binding and the console never touches Postgres (§22 item 4) | 0.11, §21.1, §22.1-2 | blocked\*\* |
 | 0.13 | Sentry for console and services; axe accessibility checks in CI                                                                                                                                                                                                                                                                                                                               | 0.2, 0.11            | todo        |
 
@@ -55,13 +55,11 @@ is built, host-agnostic and CI-tested, so that half is waiting on the decision
 rather than on work. Nothing has been deployed: no Cloudflare account, token or
 DNS was used. `infra/cloudflare/RUNBOOK.md` is the executable half.
 
-\* **0.11 is done except for its token values.** SPEC §3.1 names `docs/mockup.html`
-as the source of the design tokens and that file does not exist (task L.5, Q0). The
-shell, the routes, the chrome and the three-state semantics are built and tested; the
-colour and type values are provisional, quarantined in `packages/ui/src/tokens/palette.css`,
-and enforced there by `tests/console/tokens-quarantine.test.ts` so the swap is one file.
-See `packages/ui/DESIGN.md`. SPEC §21 decision 9 is also still open and changes the
-same layer.
+\* **0.11's token values are now real.** They were provisional while
+`docs/mockup.html` did not exist; task L.5 authored it and
+`packages/ui/src/tokens/palette.css` is extracted from it. The swap was the
+one-file change 0.11 promised, and the contrast test checked it rather than
+trusting it. See `packages/ui/DESIGN.md`.
 
 ---
 

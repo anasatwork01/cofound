@@ -85,6 +85,15 @@ const TOKEN_PROPERTIES = new Set([
   ...COLOUR_TOKENS.map((name) => `--color-${name}`),
   "--font-sans",
   "--font-mono",
+  /* The seam between next/font and the token layer, added with the approved
+     mockup (task L.5). `apps/console/src/app/fonts.ts` sets these from
+     next/font, which supplies BOTH the real family and its metric-matched
+     fallback; `tokens.css` reads them inside --font-sans / --font-mono with a
+     system stack behind. They are referenced rather than the family being
+     named literally, because next/font mangles the family name at build time
+     and a literal would silently never match. */
+  "--font-sans-loaded",
+  "--font-mono-loaded",
   ...["xs", "sm", "base", "lg", "xl", "2xl", "3xl"].map((step) => `--text-${step}`),
   ...["sm", "md", "lg"].map((step) => `--radius-${step}`),
   ...[1, 2, 3, 4, 5, 6, 7, 8].map((step) => `--space-${step}`),

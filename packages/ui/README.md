@@ -2,12 +2,13 @@
 
 Shared React components for the console.
 
-**Tokens are provisional.** SPEC §3.1 says to extract them from
-`docs/mockup.html`, and that file does not exist (task L.5, `docs/open-questions.md`
-Q0). `src/tokens/palette.css` is the only file in the repository permitted to
-contain a colour literal, and that is enforced by
-`tests/console/tokens-quarantine.test.ts` so the eventual swap is a one-file
-change. **Read `DESIGN.md` before touching anything in `src/tokens/`.**
+**Tokens are extracted from `docs/mockup.html`**, the approved mockup SPEC §3.1
+names (authored 2026-09-12, task L.5). `src/tokens/palette.css` is the only file
+in the repository permitted to contain a colour literal, enforced by
+`tests/console/tokens-quarantine.test.ts`. **Read `DESIGN.md` before touching
+anything in `src/tokens/`** — in particular the rule that the three states are
+anchored on contrast rather than lightness, which is not recoverable by looking
+at the values.
 
 Semantic colour has exactly three states (SPEC §18): violet = agent-owned
 action, amber = waiting on you, teal = live - used identically for an ads

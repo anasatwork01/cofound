@@ -114,37 +114,73 @@
   /* Deliberately the ink colour, not a fourth hue. See the note above. */
   --color-focus: var(--raw-grey-900);
 
-  /* No web font. Without the mockup there is no approved typeface, and
-     picking a distinctive one now is exactly the identity that would have to
-     be unpicked later. */
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono:
-    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  /* Atkinson Hyperlegible, from the approved mockup. One superfamily in two
+     voices, chosen for the reading task rather than for a mood: a founder
+     scans amounts, durations, IDs and file paths at speed, and confusing
+     1/l/I or 0/O there costs real money. Atkinson is the typeface engineered
+     to disambiguate exactly those, and drawing both voices from one family
+     means a sentence with an ID in it reads as one line rather than a paste.
 
-  /* A modular scale: base 1rem, ratio 2^(1/5), so the scale doubles every five
-     steps. xs is 12.1px - small enough for SPEC 18's "SHAs demoted to small
-     monospace", large enough to still be read. */
+     61 KB self-hosted for the whole system: 33.2 KB variable 400-700 sans,
+     17.3 + 10.5 KB mono 400/600. Verified 2026-09-12, docs/verified.md.
+
+     The fallbacks are metric-matched in apps/console/src/app/fonts.ts so a
+     cold start does not reflow the gauge.
+
+     MONO IS THE VOICE OF MEASUREMENT AND NEVER OF LABELS: credits, costs,
+     durations, versions, positions, SHAs - anything compared down a column.
+     Not captions, not eyebrows, not prose. That rule also delivers tabular
+     figures by construction.
+
+     --font-*-loaded is set by apps/console/src/app/fonts.ts and carries BOTH
+     the real family and the metric-matched fallback Next generates. It is
+     referenced rather than naming the family literally, because next/font
+     mangles the family name at build time - a literal family name would
+     silently never match. The system stack behind it is what packages/ui
+     renders with when used outside the console, in a unit test for instance. */
+  --font-sans:
+    var(--font-sans-loaded, ui-sans-serif), "Halyard Sans Fallback", system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
+  --font-mono:
+    var(--font-mono-loaded, ui-monospace), "Halyard Mono Fallback", SFMono-Regular, Menlo, Consolas,
+    monospace;
+
+  /* From the mockup: base 15px, ratio 1.125, seven contiguous steps. Page
+     headings stop at 2xl (21.36px); 3xl is declared for the rare case and is
+     currently unused. xs is the gauge, metadata and SPEC 18's "SHAs demoted
+     to small monospace".
+
+     Four weights and no more - 400 body, 500 UI labels, 600 panel titles and
+     the gauge readout, 700 page headings - because hierarchy here is weight
+     and position rather than size. */
   --text-*: initial;
-  --text-xs: 0.758rem;
+  --text-xs: 0.7407rem; /* 11.85px */
   --text-xs--line-height: 1.45;
-  --text-sm: 0.871rem;
+  --text-sm: 0.8333rem; /* 13.33px */
   --text-sm--line-height: 1.45;
-  --text-base: 1rem;
-  --text-base--line-height: 1.5;
-  --text-lg: 1.149rem;
+  --text-base: 0.9375rem; /* 15.00px */
+  --text-base--line-height: 1.55;
+  --text-lg: 1.0547rem; /* 16.88px */
   --text-lg--line-height: 1.4;
-  --text-xl: 1.32rem;
+  --text-xl: 1.1865rem; /* 18.98px */
   --text-xl--line-height: 1.35;
-  --text-2xl: 1.516rem;
+  --text-2xl: 1.335rem; /* 21.36px */
   --text-2xl--line-height: 1.25;
-  --text-3xl: 1.741rem;
+  --text-3xl: 1.5019rem; /* 24.03px */
   --text-3xl--line-height: 1.2;
 
+  /* Radius encodes what a thing IS, not how new the design is:
+       0     instruments and data surfaces - you read these. The gauge, pips,
+             the preview frame, table rows, the chat column. Not declared
+             because it is the absence of a radius.
+       sm    anything you operate - buttons, inputs, selects, chips.
+       md    anything that floats above the page - menus, dialogs, toasts.
+     lg is declared because the contract carries three; nothing uses it, and
+     inventing a job for it would be inventing a fourth tier. */
   --radius-*: initial;
-  --radius-sm: 0.25rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
+  --radius-sm: 0.1875rem; /* 3px */
+  --radius-md: 0.5rem; /* 8px */
+  --radius-lg: 0.75rem; /* 12px - declared, unused */
 
   /* Tailwind's dynamic spacing multiplier. Set to the same 4px grid as
      --space-* below, so `p-4` and `var(--space-4)` are the same length and
