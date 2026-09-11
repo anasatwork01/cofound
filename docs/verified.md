@@ -551,6 +551,150 @@ enforcement is for the rollback not to exist: a section that drops a table is on
 command away from deleting a tenant's history. Local iteration uses
 `make db-reset`, which refuses to run against anything but the compose database.
 
+## Console authentication
+
+Verified 2026-09-11 for task 0.7. No new third-party dependency: the flows are
+implemented against Go's standard library and the packages already pinned, so
+what is recorded here is behaviour rather than versions.
+
+### Google's ID token needs no signature check on this path
+
+`parseIDToken` reads the claims and does **not** verify the JWT signature. That
+is standards-sanctioned rather than a shortcut. OpenID Connect Core §3.1.3.7
+item 6: _"If the ID Token is received via direct communication between the
+Client and the Token Endpoint, the TLS server validation MAY be used to
+validate the issuer in place of checking the token signature."_ This token
+arrives on our own TLS connection to Google's token endpoint, authenticated with
+our client secret — never through the browser — so the transport already
+establishes who sent it.
+
+The claims that are **not** optional are enforced, and skipping the signature is
+only sound because they are:
+
+- **`aud` must equal our client id.** Without it, an ID token minted for _any_
+  other Google client would authenticate a user here. This is the
+  confused-deputy problem the claim exists for.
+- **`iss` must be Google.** Both historical spellings are accepted
+  (`https://accounts.google.com` and `accounts.google.com`), nothing else.
+- **`exp` must be present and future.** A missing `exp` is rejected rather than
+  treated as "no deadline", which would make the token a permanent credential.
+- **`email_verified` must be true**, and it is read as either a JSON boolean or
+  the string `"true"` — Google has emitted both. A parser handling only the
+  boolean reads the string as false and refuses every sign-in, which looks like
+  a Google outage rather than a bug.
+
+The alternative — fetching, caching and rotating Google's JWKS — is worth doing
+for a token arriving through an untrusted channel. Here it would add a second
+network dependency on the sign-in path without adding a property.
+
+### `%v` reflects into unexported fields
+
+The `Token` type originally did **not** implement `fmt.Stringer`, on the
+reasoning that a `String` method would embed the token in any log line that
+formatted a surrounding struct. That was exactly backwards, and
+`TestTokenRedactsItselfInEveryFormatVerb` caught it: `fmt` reflects into
+unexported fields, so `%v` on a struct holding a `Token` printed the raw token
+regardless. **Not** implementing `Stringer` left the hole open; implementing it
+to return `Token([redacted])`, plus `GoString` for `%#v`, closes it. The test
+covers `%v`, `%s`, `%+v`, `%#v` and `%q`, on the value, the struct and a pointer
+to it.
+
+### Postgres timestamps are microseconds; Go's are nanoseconds
+
+`timestamptz` stores microsecond precision. `time.Now()` on Linux returns
+nanoseconds. So a deadline held in memory and the same deadline read back from a
+column differ in the last three digits, and comparing the two is a test that
+passes on macOS — whose clock is already microsecond-granular — and fails on
+Linux. That is exactly what happened: `TestRotationDoesNotExtendTheAbsoluteDeadline`
+passed locally and failed in CI with `...357563094` against `...357563`.
+
+Any assertion about a timestamp that has been through the database must take
+both sides from the database, or truncate to `time.Microsecond`. The test now
+reads its baseline back with a query rather than using the value the constructor
+returned.
+
+### The rotation grace window is a bug fix, not slack
+
+SPEC §8 requires rotating cookies. A console page issues several requests at
+once, so if the first rotates the token the others are still carrying the old
+one — and without a grace window each is rejected, signing the user out for the
+crime of loading a page. A rotated token therefore stays valid for 60 seconds
+and the caller is handed the successor session.
+
+Two properties keep that from becoming a hole, both asserted:
+
+- Past the grace window the old token is dead, so a cookie captured earlier does
+  not keep working.
+- Rotation **never** extends `absolute_expires_at`. Otherwise "rotating" means
+  "immortal under a new name each time", and nothing ever ejects a session an
+  attacker keeps warm. The test rotates five times and then checks the session
+  dies at its original absolute deadline.
+
+The grace path deliberately returns **no** new token: the raw successor cannot
+be recovered (only its hash is stored), and it does not need to be — the request
+that did the rotation already gave the browser the new cookie. Minting a fresh
+token per concurrent request is how one page load becomes six sessions.
+
+### `__Host-` requires Secure, and is dropped silently without it
+
+The session cookie is `__Host-halyard_session` in production. A browser accepts
+that prefix only with `Secure`, `Path=/` and **no** `Domain`, which is what
+stops the cookie reaching a preview subdomain running code the agent wrote
+(SPEC §9, §17). Without `Secure` the browser drops it with no error, presenting
+as "sign-in does nothing" — so the name is chosen by the same flag that sets
+`Secure` rather than configured separately, and development falls back to the
+unprefixed name.
+
+`SameSite=Lax` and not `Strict`: a magic link arrives from an email client as a
+cross-site top-level navigation, and `Strict` withholds the cookie on exactly
+that request, so the user lands signed out. The OAuth challenge cookie is `Lax`
+for the same reason — the callback arrives from Google.
+
+### Postgres, not application logic, enforces single use
+
+A magic link is consumed with one statement:
+
+```sql
+update login_tokens set consumed_at = now()
+ where token_hash = $1 and consumed_at is null and expires_at > now()
+returning email
+```
+
+A select-then-update would let two concurrent clicks both pass the select — the
+classic double-spend — and single use is what makes a credential sitting in an
+inbox acceptable at all.
+
+### Email normalisation stops at case and whitespace
+
+Deliberately **not** the popular extras of stripping dots or `+suffixes`. Those
+rules belong to particular providers, change without notice, and applying them
+collapses two distinct addresses at any provider that does not share the
+assumption. Under-normalising creates a duplicate account, which is
+recoverable; over-normalising hands one person's account to another, which is
+not. Asserted in both directions.
+
+### Restrictive policies, and the widening that prompted them
+
+Found while verifying row-level security for task 0.6, after `00013` was already
+written. Postgres OR-s permissive policies and AND-s restrictive ones, so with
+only permissive policies **any** policy added later widens access:
+
+```sql
+create policy support_read on secrets using (true);   -- for an internal admin view
+```
+
+That one line makes every tenant's secrets readable by every tenant. Migration
+`00015` adds a restrictive guard carrying the same org comparison to all 28
+tenant tables, which is AND-ed with whatever else exists.
+`test_a_careless_permissive_policy_cannot_widen_access` performs exactly that
+mistake and asserts the boundary holds — and was checked to **fail** when the
+guard is dropped, so it is not passing for another reason.
+
+Related, from the same verification: the ownership bypass follows role
+**membership**, not identity, so granting the app role membership in the owner
+role would silently disable RLS on any table that is not `FORCE`d. Every table
+is forced, which makes that mistake non-fatal.
+
 ## Service containers
 
 Pinned in `compose.yaml` and `.github/workflows/ci.yml`. Verified 2026-09-09 by

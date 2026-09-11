@@ -188,11 +188,13 @@ jobs:
       # pytest exits 5 when it collects nothing, so a harness that silently
       # stopped running these tests fails the job instead of reporting green.
       - run: make test-integration
-      # The Go half of the same proof: that db.Open refuses a role which would
-      # bypass row-level security, and that a scoped transaction cannot leak its
-      # org onto a pooled connection. Neither is testable without a database,
-      # which is why they run here rather than in the `go` job.
-      - run: cd packages/db && go test ./...
+      # The Go tests that need a database. db.Open refusing a role which would
+      # bypass row-level security, a scoped transaction not leaking its org onto
+      # a pooled connection, and the whole sign-in flow — none of which is
+      # testable without Postgres, which is why they run here rather than in the
+      # `go` job. They skip there; see packages/db/db_test.go for the guard.
+      - run: cd packages/db && go test ./... -count=1
+      - run: cd services/api && go test ./... -count=1
 
   ci:
     name: ci

@@ -41,6 +41,11 @@ func boot(t *testing.T, env map[string]string) (string, *logging.Sink) {
 	if env["DATABASE_URL"] == "" {
 		env["DATABASE_URL"] = "postgres://halyard_app:x@db.invalid:5432/halyard"
 	}
+	// Required as of task 0.7: every sign-in link is built from it rather than
+	// from the request's Host header.
+	if env["CONSOLE_ORIGIN"] == "" {
+		env["CONSOLE_ORIGIN"] = "http://console.test"
+	}
 	api.Open = func(context.Context, db.Config) (*db.Pool, error) { return nil, nil }
 
 	c, err := chassis.New(context.Background(), chassis.Options{
@@ -134,9 +139,10 @@ func TestReadyzIsReadyAgainstARealDatabase(t *testing.T) {
 			Bind: api.Bind, Setup: api.Setup, Probes: api.Probes,
 		},
 		Lookup: config.MapLookup(map[string]string{
-			"HALYARD_ENV":  "development",
-			"DATABASE_URL": appURL,
-			"REDIS_URL":    "redis://localhost:56379/0",
+			"HALYARD_ENV":    "development",
+			"DATABASE_URL":   appURL,
+			"REDIS_URL":      "redis://localhost:56379/0",
+			"CONSOLE_ORIGIN": "http://console.test",
 		}),
 		Out: sink,
 	})
@@ -186,9 +192,10 @@ func TestSetupRefusesAPrivilegedDatabaseRole(t *testing.T) {
 			Bind: api.Bind, Setup: api.Setup, Probes: api.Probes,
 		},
 		Lookup: config.MapLookup(map[string]string{
-			"HALYARD_ENV":  "development",
-			"DATABASE_URL": ownerURL,
-			"REDIS_URL":    "redis://localhost:56379/0",
+			"HALYARD_ENV":    "development",
+			"DATABASE_URL":   ownerURL,
+			"REDIS_URL":      "redis://localhost:56379/0",
+			"CONSOLE_ORIGIN": "http://console.test",
 		}),
 		Out: logging.NewSink(),
 	})

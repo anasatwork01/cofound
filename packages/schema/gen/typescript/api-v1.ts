@@ -4,6 +4,112 @@
  */
 
 export interface paths {
+    "/auth/magic-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Email a sign-in link
+         * @description Always answers 202, whether or not the address has an account. A
+         *     different response for a known address would turn this into a way to
+         *     test whether a given person has one.
+         */
+        post: operations["requestMagicLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/magic-link/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange a link token for a session
+         * @description Single-use. An unknown, spent or expired token is answered identically,
+         *     so the endpoint cannot be used to learn which a captured token was.
+         */
+        post: operations["verifyMagicLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/google/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Begin Google OAuth
+         * @description Redirects to Google with a CSRF `state` and a PKCE challenge, both held
+         *     in short-lived httpOnly cookies. 404 when Google sign-in is not
+         *     configured, so a deployment without credentials degrades to magic links
+         *     rather than to a broken redirect.
+         */
+        get: operations["startGoogleSignIn"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/google/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Complete Google OAuth */
+        get: operations["completeGoogleSignIn"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who am I */
+        get: operations["getAuthSession"];
+        put?: never;
+        post?: never;
+        /**
+         * Sign out
+         * @description Idempotent: signing out when already signed out answers 204. Clears the
+         *     cookie with attributes matching the ones it was set with, or the browser
+         *     treats it as a different cookie and leaves the original in place.
+         */
+        delete: operations["signOut"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs": {
         parameters: {
             query?: never;
@@ -249,6 +355,44 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AuthSession
+         * @description The signed-in user. Named AuthSession rather than Session because
+         *     `Session` already means an AGENT session here — a project, a branch, a
+         *     sandbox (SPEC 6) — and the two are unrelated. The same collision is why
+         *     migration 00014 calls its table `user_sessions`.
+         *
+         *     Deliberately NOT the session token or its id: the console needs neither,
+         *     and a body carrying one would put a credential into anything that
+         *     logged a response.
+         */
+        AuthSession: {
+            user: components["schemas"]["AuthUser"];
+            /**
+             * @description Every org the user belongs to, with their role in each. SPEC 8:
+             *     users may belong to many orgs, and the project picker switches
+             *     between them — so the console needs the whole list on load rather
+             *     than one request per org.
+             */
+            orgs: components["schemas"]["AuthOrgMembership"][];
+        };
+        /** AuthUser */
+        AuthUser: {
+            id: components["schemas"]["Uuid"];
+            /** Format: email */
+            email: string;
+            name?: string | null;
+        };
+        /**
+         * AuthOrgMembership
+         * @description One org the signed-in user belongs to, and their role in it.
+         */
+        AuthOrgMembership: {
+            id: components["schemas"]["Uuid"];
+            slug: components["schemas"]["Slug"];
+            name: string;
+            role: components["schemas"]["Role"];
+        };
         Org: {
             id: components["schemas"]["Uuid"];
             name: string;
@@ -386,22 +530,6 @@ export interface components {
          */
         TurnStatus: "running" | "done" | "failed" | "aborted" | "budget_exceeded";
         /**
-         * Slug
-         * @description Lowercase, DNS-label safe: a project slug reaches a preview hostname (SPEC 9).
-         */
-        Slug: string;
-        /**
-         * Uuid
-         * Format: uuid
-         */
-        Uuid: string;
-        /**
-         * Timestamp
-         * Format: date-time
-         * @description RFC 3339, always UTC. Ads reporting is timezone-bound per account (SPEC 19.4) and converts at the edge of the system, never in storage.
-         */
-        Timestamp: string;
-        /**
          * Error
          * @description SPEC 10 requires a structured error the UI can render as a human-readable message rather than a raw git error, and SPEC 18 requires errors to say what happened and how to fix it, without apologising. `fix` is that second half, and is separate from `message` so the UI can present it as an action.
          */
@@ -424,11 +552,27 @@ export interface components {
             error: components["schemas"]["Error"];
         };
         /**
+         * Uuid
+         * Format: uuid
+         */
+        Uuid: string;
+        /**
+         * Slug
+         * @description Lowercase, DNS-label safe: a project slug reaches a preview hostname (SPEC 9).
+         */
+        Slug: string;
+        /**
          * Role
          * @description SPEC 8. Approving anything that spends money requires owner or admin.
          * @enum {unknown}
          */
         Role: "owner" | "admin" | "editor" | "viewer";
+        /**
+         * Timestamp
+         * Format: date-time
+         * @description RFC 3339, always UTC. Ads reporting is timezone-bound per account (SPEC 19.4) and converts at the edge of the system, never in storage.
+         */
+        Timestamp: string;
         /**
          * Page
          * @description Cursor pagination. Offsets skip or duplicate rows when the underlying list changes, which it constantly does for timelines and ledgers.
@@ -490,6 +634,33 @@ export interface components {
             };
         };
         /**
+         * @description No valid session. One response for a missing cookie, an unknown token,
+         *     an expired session and a revoked one: the caller's next step is the same
+         *     in every case, and distinguishing them would say whether a captured
+         *     token was ever real.
+         */
+        Unauthenticated: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /**
+         * @description Too many requests. Carries Retry-After, so a client waits rather than
+         *     spinning (SPEC 18: an error says what to do about it).
+         */
+        RateLimited: {
+            headers: {
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /**
          * @description Insufficient credits to place a hold. SPEC 16.3: exhausting the build
          *     meter pauses the builder, which is harmless because the user is at the
          *     keyboard.
@@ -516,6 +687,151 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    requestMagicLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: email */
+                    email: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The request was accepted. No indication of whether an email was sent. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            422: components["responses"]["Invalid"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    verifyMagicLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /**
+             * @description Signed in. Sets the session cookie: httpOnly, SameSite=Lax and, in
+             *     production, Secure with the `__Host-` prefix (SPEC 8).
+             */
+            200: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSession"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    startGoogleSignIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to Google. */
+            303: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    completeGoogleSignIn: {
+        parameters: {
+            query?: {
+                code?: string;
+                state?: string;
+                /** @description Set by Google when the user declined. */
+                error?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Redirect back into the console, signed in or not. A redirect rather
+             *     than a body because the browser arrives here by navigation.
+             */
+            303: {
+                headers: {
+                    Location?: string;
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getAuthSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSession"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    signOut: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out. */
+            204: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     createOrg: {
         parameters: {
             query?: never;
@@ -726,7 +1042,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Session"];
+                    "application/json": components["schemas"]["AuthSession"];
                 };
             };
             402: components["responses"]["PaymentRequired"];

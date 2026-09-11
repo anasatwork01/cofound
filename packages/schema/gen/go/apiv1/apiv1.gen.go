@@ -11,6 +11,42 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// AuthOrgMembership One org the signed-in user belongs to, and their role in it.
+type AuthOrgMembership struct {
+	Id   externalRef0.Uuid `json:"id"`
+	Name string            `json:"name"`
+
+	// Role SPEC 8. Approving anything that spends money requires owner or admin.
+	Role externalRef0.Role `json:"role"`
+
+	// Slug Lowercase, DNS-label safe: a project slug reaches a preview hostname (SPEC 9).
+	Slug externalRef0.Slug `json:"slug"`
+}
+
+// AuthSession The signed-in user. Named AuthSession rather than Session because
+// `Session` already means an AGENT session here — a project, a branch, a
+// sandbox (SPEC 6) — and the two are unrelated. The same collision is why
+// migration 00014 calls its table `user_sessions`.
+//
+// Deliberately NOT the session token or its id: the console needs neither,
+// and a body carrying one would put a credential into anything that
+// logged a response.
+type AuthSession struct {
+	// Orgs Every org the user belongs to, with their role in each. SPEC 8:
+	// users may belong to many orgs, and the project picker switches
+	// between them — so the console needs the whole list on load rather
+	// than one request per org.
+	Orgs []AuthOrgMembership `json:"orgs"`
+	User AuthUser            `json:"user"`
+}
+
+// AuthUser defines model for AuthUser.
+type AuthUser struct {
+	Email openapi_types.Email `json:"email"`
+	Id    externalRef0.Uuid   `json:"id"`
+	Name  *string             `json:"name,omitempty"`
+}
+
 // Branch defines model for Branch.
 type Branch struct {
 	// HeadSha Full or abbreviated. SPEC 18 demotes these in the UI but never hides them.
@@ -143,25 +179,6 @@ type Project struct {
 	Slug externalRef0.Slug `json:"slug"`
 }
 
-// Session defines model for Session.
-type Session struct {
-	BranchId externalRef0.Uuid `json:"branch_id"`
-	Id       externalRef0.Uuid `json:"id"`
-
-	// Lease SPEC 5.4 keeps this behind an interface so Redis can be swapped for Durable Objects in phase 6.
-	Lease     *Lease            `json:"lease,omitempty"`
-	ProjectId externalRef0.Uuid `json:"project_id"`
-
-	// StartedAt RFC 3339, always UTC. Ads reporting is timezone-bound per account (SPEC 19.4) and converts at the edge of the system, never in storage.
-	StartedAt externalRef0.Timestamp `json:"started_at"`
-
-	// State Mirrors sessions.state in SPEC 6.
-	State SessionState `json:"state"`
-}
-
-// SessionState Mirrors sessions.state in SPEC 6.
-type SessionState = interface{}
-
 // Template defines model for Template.
 type Template struct {
 	CurrentVersion TemplateVersion `json:"current_version"`
@@ -234,6 +251,31 @@ type NotFound = externalRef0.ErrorResponse
 // PaymentRequired defines model for PaymentRequired.
 type PaymentRequired = externalRef0.ErrorResponse
 
+// RateLimited defines model for RateLimited.
+type RateLimited = externalRef0.ErrorResponse
+
+// Unauthenticated defines model for Unauthenticated.
+type Unauthenticated = externalRef0.ErrorResponse
+
+// CompleteGoogleSignInParams defines parameters for CompleteGoogleSignIn.
+type CompleteGoogleSignInParams struct {
+	Code  *string `form:"code,omitempty" json:"code,omitempty"`
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// Error Set by Google when the user declined.
+	Error *string `form:"error,omitempty" json:"error,omitempty"`
+}
+
+// RequestMagicLinkJSONBody defines parameters for RequestMagicLink.
+type RequestMagicLinkJSONBody struct {
+	Email openapi_types.Email `json:"email"`
+}
+
+// VerifyMagicLinkJSONBody defines parameters for VerifyMagicLink.
+type VerifyMagicLinkJSONBody struct {
+	Token string `json:"token"`
+}
+
 // CreateOrgParams defines parameters for CreateOrg.
 type CreateOrgParams struct {
 	// IdempotencyKey Replaying a key returns the original response instead of acting twice (SPEC 7.1, 17.2).
@@ -287,6 +329,12 @@ type CreateTurnParams struct {
 	// IdempotencyKey Replaying a key returns the original response instead of acting twice (SPEC 7.1, 17.2).
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
+
+// RequestMagicLinkJSONRequestBody defines body for RequestMagicLink for application/json ContentType.
+type RequestMagicLinkJSONRequestBody RequestMagicLinkJSONBody
+
+// VerifyMagicLinkJSONRequestBody defines body for VerifyMagicLink for application/json ContentType.
+type VerifyMagicLinkJSONRequestBody VerifyMagicLinkJSONBody
 
 // CreateOrgJSONRequestBody defines body for CreateOrg for application/json ContentType.
 type CreateOrgJSONRequestBody = CreateOrgRequest

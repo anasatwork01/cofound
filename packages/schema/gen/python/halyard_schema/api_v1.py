@@ -180,6 +180,27 @@ class TurnStatus(Enum):
     budget_exceeded = "budget_exceeded"
 
 
+class AuthOrgMembership(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: Uuid
+    slug: Slug
+    name: str
+    role: Role
+
+
+class Org(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: Uuid
+    name: Annotated[str, Field(min_length=1)]
+    slug: Slug
+    plan: str
+    created_at: Timestamp
+
+
 class CreateOrgRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -287,15 +308,13 @@ class Turn(BaseModel):
     ended_at: Timestamp | None = None
 
 
-class Org(BaseModel):
+class AuthUser(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
     id: Uuid
-    name: Annotated[str, Field(min_length=1)]
-    slug: Slug
-    plan: str
-    created_at: Timestamp
+    email: EmailStr
+    name: str | None = None
 
 
 class Template(BaseModel):
@@ -333,3 +352,16 @@ class Session(BaseModel):
     state: SessionState
     lease: Lease | None = None
     started_at: Timestamp
+
+
+class AuthSession(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    user: AuthUser
+    orgs: Annotated[
+        list[AuthOrgMembership],
+        Field(
+            description="Every org the user belongs to, with their role in each. SPEC 8:\nusers may belong to many orgs, and the project picker switches\nbetween them — so the console needs the whole list on load rather\nthan one request per org.\n"
+        ),
+    ]

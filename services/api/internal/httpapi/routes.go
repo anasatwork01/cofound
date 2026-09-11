@@ -7,8 +7,11 @@ import (
 	"io"
 
 	"github.com/anasatwork01/cofound/packages/chassis"
+	"github.com/anasatwork01/cofound/packages/chassis/config"
 	"github.com/anasatwork01/cofound/packages/chassis/health"
 	"github.com/anasatwork01/cofound/packages/db"
+
+	"github.com/anasatwork01/cofound/services/api/internal/auth"
 
 	apiconfig "github.com/anasatwork01/cofound/services/api/internal/config"
 )
@@ -22,6 +25,15 @@ type API struct {
 
 	// DB is nil until Setup runs, and Probes runs after Setup.
 	DB *db.Pool
+
+	// Auth is the sign-in surface, built by Setup.
+	Auth *auth.Handlers
+
+	// MailerFor overrides how magic links are delivered. Tests capture the link
+	// with it; production leaves it nil and gets the log-only mailer, because
+	// SPEC §8 requires email magic links and neither §3's stack nor §22's list
+	// names a transactional email provider. See docs/open-questions.md Q5.
+	MailerFor func(*chassis.Runtime) auth.Mailer
 
 	// Open is the seam a test uses to boot without Postgres.
 	//
@@ -84,6 +96,35 @@ func (a *API) Setup(ctx context.Context, rt *chassis.Runtime) (io.Closer, error)
 		return nil, nil
 	}
 
+	// Sign-in (SPEC §8). Mounted on the PUBLIC subtree, including "who am I"
+	// and sign-out: these are the endpoints that establish who the caller is,
+	// so they cannot sit behind middleware that needs that answer already.
+	//
+	// Secure cookies everywhere but development. Derived from the environment
+	// rather than configured separately, so the two cannot disagree — and a
+	// __Host- cookie without Secure is silently dropped by the browser, which
+	// presents as "sign-in does nothing" with no error anywhere.
+	a.Auth = &auth.Handlers{
+		Sessions: auth.NewSessions(pool, auth.SessionPolicy{
+			IdleTimeout:     cfg.SessionIdleTimeout,
+			AbsoluteTimeout: cfg.SessionAbsoluteTimeout,
+			RotateAfter:     cfg.SessionRotateAfter,
+			RotateGrace:     auth.DefaultSessionPolicy().RotateGrace,
+		}, nil),
+		Links: auth.NewMagicLinks(pool, a.Mailer(rt), auth.DefaultMagicLinkPolicy(),
+			cfg.ConsoleOrigin, nil),
+		Google: auth.NewGoogle(pool, auth.GoogleConfig{
+			ClientID:     cfg.GoogleClientID,
+			ClientSecret: cfg.GoogleClientSecret,
+			RedirectURL:  cfg.GoogleRedirectURL,
+		}, nil, nil),
+		Pool:          pool,
+		Cookies:       auth.CookieConfig{Secure: rt.Config.Env != config.EnvDevelopment, MaxAge: cfg.SessionAbsoluteTimeout},
+		Audit:         auth.DBAudit{Pool: pool},
+		ConsoleOrigin: cfg.ConsoleOrigin,
+	}
+	a.Auth.Mount(rt.Mux.Public, rt.Errors)
+
 	// The streaming subtree exists and is empty. It has no handler timeout and
 	// no body cap, which is what makes it safe for SSE. Task 1.14 mounts
 	// GET /v1/projects/{project}/sessions/{session}/events here.
@@ -102,6 +143,19 @@ type closer struct{ pool *db.Pool }
 func (c closer) Close() error {
 	c.pool.Close()
 	return nil
+}
+
+// Mailer returns the configured mailer, or the log-only default.
+//
+// The default refuses to be useful in production: it writes the link as user
+// content, which the chassis redactor replaces above debug level, so a
+// production deploy that reached it does not spray live sign-in links into a
+// log pipeline. It is still the wrong thing to ship, which is why Q5 is open.
+func (a *API) Mailer(rt *chassis.Runtime) auth.Mailer {
+	if a.MailerFor != nil {
+		return a.MailerFor(rt)
+	}
+	return auth.LogMailer{Log: rt.Log}
 }
 
 // Probes registers readiness probes.
