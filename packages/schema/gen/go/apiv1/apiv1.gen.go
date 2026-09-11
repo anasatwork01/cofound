@@ -209,7 +209,7 @@ type Template struct {
 type TemplateVersion struct {
 	Id externalRef0.Uuid `json:"id"`
 
-	// ImageReady Whether the pre-baked sandbox image exists. Without it, project creation misses the p50 < 10s SLO (SPEC 9, 17.3).
+	// ImageReady Whether the pre-baked sandbox image exists. Without it, project creation misses the p50 < 10s SLO (SPEC 9, 17.3) - necessary but not sufficient, since the Modal snapshot/restore half of that budget is unmeasured until task 1.19.
 	ImageReady bool   `json:"image_ready"`
 	Version    string `json:"version"`
 }

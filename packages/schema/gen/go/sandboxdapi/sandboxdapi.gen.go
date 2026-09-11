@@ -33,7 +33,12 @@ type Health struct {
 
 // Session defines model for Session.
 type Session struct {
-	// SandboxId Modal's identifier. Opaque to the control plane.
+	// SandboxId Modal's identifier for the CURRENT incarnation, and disposable.
+	// Snapshot-and-recreate yields a new id, so never treat this as
+	// project identity — key everything on project_id. Worth storing only
+	// because Sandbox.from_id() reattaches from any sandboxd replica; and
+	// because V2 sandboxes are not returned by Sandbox.list(), orphan
+	// reconciliation must use stored ids rather than enumeration.
 	SandboxId *string           `json:"sandbox_id,omitempty"`
 	SessionId externalRef0.Uuid `json:"session_id"`
 
@@ -44,9 +49,18 @@ type Session struct {
 	State SessionState `json:"state"`
 
 	// TunnelUrl Registered against <branch>.<project>.preview.<domain> in Workers KV
-	// (SPEC 9 step 5). Null until the dev server is listening. Never
-	// handed to a browser unsigned — SPEC 14.3 gates preview URLs behind
-	// a signed cookie, because an unlisted URL is not access control.
+	// (SPEC 9 step 5). Null until the dev server is listening.
+	//
+	// NOT STABLE: Modal assigns a random hostname with no way to pin one,
+	// so this changes on every create and every restore. Re-read it after
+	// a restore and invalidate the previous KV entry; it is never a
+	// project-stable address.
+	//
+	// Reachable only from Halyard's proxy via inbound_cidr_allowlist — a
+	// Modal tunnel is public by default and is a raw TLS stream that does
+	// no L7 processing, so it adds no X-Forwarded-For. Never handed to a
+	// browser unsigned: SPEC 14.3 gates preview URLs behind a signed
+	// cookie, because an unlisted URL is not access control.
 	TunnelUrl *string `json:"tunnel_url,omitempty"`
 
 	// Warm Whether this came from the warm pool. The single biggest lever on perceived quality (SPEC 9), so it is measured.
@@ -57,9 +71,16 @@ type Session struct {
 // is untrusted, so a limit checked only inside it is not a limit.
 // Omitted fields take the platform default.
 type SessionQuotas struct {
-	MemoryMb                *int     `json:"memory_mb,omitempty"`
-	TokensPerSession        *int     `json:"tokens_per_session,omitempty"`
-	TokensPerTurn           *int     `json:"tokens_per_turn,omitempty"`
+	MemoryMb         *int `json:"memory_mb,omitempty"`
+	TokensPerSession *int `json:"tokens_per_session,omitempty"`
+	TokensPerTurn    *int `json:"tokens_per_turn,omitempty"`
+
+	// Vcpu vCPU, as SPEC 9 states it. Modal's `cpu=` takes PHYSICAL CORES,
+	// which its pricing page labels "2 vCPU equivalent" — so pass
+	// `cpu=(vcpu/2, vcpu/2)`. Passing this scalar straight through
+	// provisions twice the CPU and raises spend ~1.6x, and a bare scalar
+	// is only a request that permits billed bursting to request + 16
+	// cores; the tuple is the hard cap this quota claims to be.
 	Vcpu                    *float32 `json:"vcpu,omitempty"`
 	WallClockSecondsPerTurn *int     `json:"wall_clock_seconds_per_turn,omitempty"`
 }

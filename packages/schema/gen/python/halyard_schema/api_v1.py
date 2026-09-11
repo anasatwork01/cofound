@@ -246,7 +246,7 @@ class TemplateVersion(BaseModel):
     image_ready: Annotated[
         bool,
         Field(
-            description="Whether the pre-baked sandbox image exists. Without it, project creation misses the p50 < 10s SLO (SPEC 9, 17.3)."
+            description="Whether the pre-baked sandbox image exists. Without it, project creation misses the p50 < 10s SLO (SPEC 9, 17.3) - necessary but not sufficient, since the Modal snapshot/restore half of that budget is unmeasured until task 1.19."
         ),
     ]
 

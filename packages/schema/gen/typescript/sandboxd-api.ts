@@ -15,14 +15,24 @@ export interface paths {
         put?: never;
         /**
          * Acquire a sandbox for a project branch
-         * @description SPEC 9 lifecycle. Looks for a warm sandbox matching the template image,
-         *     creates one from the pre-baked image with the project's volume mounted
-         *     on a miss, reconciles the working tree to the branch head, then starts
-         *     agentd.
+         * @description SPEC 9 lifecycle. Looks for a warm sandbox matching the template
+         *     image; on a miss creates one from the pre-baked image and restores the
+         *     project's directory snapshot. A per-project Modal Volume is not an
+         *     option here: `volumes=` is create-time only, so Volumes and a warm pool
+         *     are mutually exclusive. Then reconciles the working tree to the branch
+         *     head.
+         *
+         *     agentd is the sandbox ENTRYPOINT, not an exec. A ContainerProcess
+         *     handle cannot be reattached from another sandboxd replica (no
+         *     `from_id`, and no RPC enumerates running execs), and only the
+         *     entrypoint's logs are stored by Modal.
          *
          *     Returns before the sandbox is `live`: time to first preview is an SLO
-         *     (SPEC 17.3, p50 < 10s) and the caller streams progress rather than
-         *     blocking on it.
+         *     (SPEC 17.3, p50 < 10s — provisional until task 1.19 measures Modal's
+         *     snapshot and restore latency, which is unpublished) and the caller
+         *     streams progress rather than blocking on it. Streaming rather than
+         *     blocking is the right shape regardless: a restore has no published
+         *     timing and the SDK's own snapshot timeout defaults to 55s.
          */
         post: operations["createSession"];
         delete?: never;
@@ -46,8 +56,15 @@ export interface paths {
         post?: never;
         /**
          * Snapshot the filesystem and stop the sandbox
-         * @description SPEC 9 step 7. The Modal Volume is kept: the next session for this
-         *     project resumes from it rather than reinstalling dependencies.
+         * @description SPEC 9 step 7. Snapshot the project directory, THEN terminate — in
+         *     that order, because a snapshot can only be taken from a running
+         *     sandbox. The snapshot image id and its expiry are recorded in Postgres:
+         *     snapshots default to a 30-day TTL and Modal offers no API to list them,
+         *     so a lost row is an unrecoverable, still-billed storage leak.
+         *
+         *     The next session for this project restores that image rather than
+         *     reinstalling dependencies. There is no resume: the restored sandbox is
+         *     a new sandbox with a new id and a new tunnel URL.
          */
         delete: operations["stopSession"];
         options?: never;
@@ -87,15 +104,31 @@ export interface components {
         };
         Session: {
             session_id: components["schemas"]["Uuid"];
-            /** @description Modal's identifier. Opaque to the control plane. */
+            /**
+             * @description Modal's identifier for the CURRENT incarnation, and disposable.
+             *     Snapshot-and-recreate yields a new id, so never treat this as
+             *     project identity — key everything on project_id. Worth storing only
+             *     because Sandbox.from_id() reattaches from any sandboxd replica; and
+             *     because V2 sandboxes are not returned by Sandbox.list(), orphan
+             *     reconciliation must use stored ids rather than enumeration.
+             */
             sandbox_id?: string;
             state: components["schemas"]["SessionState"];
             /**
              * Format: uri
              * @description Registered against <branch>.<project>.preview.<domain> in Workers KV
-             *     (SPEC 9 step 5). Null until the dev server is listening. Never
-             *     handed to a browser unsigned — SPEC 14.3 gates preview URLs behind
-             *     a signed cookie, because an unlisted URL is not access control.
+             *     (SPEC 9 step 5). Null until the dev server is listening.
+             *
+             *     NOT STABLE: Modal assigns a random hostname with no way to pin one,
+             *     so this changes on every create and every restore. Re-read it after
+             *     a restore and invalidate the previous KV entry; it is never a
+             *     project-stable address.
+             *
+             *     Reachable only from Halyard's proxy via inbound_cidr_allowlist — a
+             *     Modal tunnel is public by default and is a raw TLS stream that does
+             *     no L7 processing, so it adds no X-Forwarded-For. Never handed to a
+             *     browser unsigned: SPEC 14.3 gates preview URLs behind a signed
+             *     cookie, because an unlisted URL is not access control.
              */
             tunnel_url?: string | null;
             /** @description Whether this came from the warm pool. The single biggest lever on perceived quality (SPEC 9), so it is measured. */
@@ -120,7 +153,15 @@ export interface components {
             tokens_per_turn: number;
             /** @default 4000000 */
             tokens_per_session: number;
-            /** @default 2 */
+            /**
+             * @description vCPU, as SPEC 9 states it. Modal's `cpu=` takes PHYSICAL CORES,
+             *     which its pricing page labels "2 vCPU equivalent" — so pass
+             *     `cpu=(vcpu/2, vcpu/2)`. Passing this scalar straight through
+             *     provisions twice the CPU and raises spend ~1.6x, and a bare scalar
+             *     is only a request that permits billed bursting to request + 16
+             *     cores; the tuple is the hard cap this quota claims to be.
+             * @default 2
+             */
             vcpu: number;
             /** @default 4096 */
             memory_mb: number;

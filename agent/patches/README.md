@@ -1,24 +1,29 @@
 # opencode patches
 
-Numbered patch files applied in CI with `git apply` against the pinned upstream
-tag in `agent/opencode`. See SPEC §11.1-§11.2.
+**This directory is empty, and is expected to stay that way.** SPEC §11.1-§11.2
+describes numbered patch files applied in CI with `git apply` against the pinned
+upstream tag in `agent/opencode`. Task 1.1 found an upstream mechanism for all
+six, so there are no patch files and CI applies nothing.
 
-Rules:
+The rules below apply _if_ a patch ever becomes necessary:
 
-- Anything achievable through `opencode.json`, `AGENTS.md` or MCP **must not** be
-  a patch. See `agent/config/`.
+- Anything achievable through configuration - `opencode.json`, `AGENTS.md`, an
+  environment variable such as `OPENCODE_PERMISSION`, or MCP - **must not** be a
+  patch. See `agent/config/`.
 - Do not restructure upstream code. Patches stay small and local.
 - Rebase onto upstream monthly. A patch that stops applying is a scheduled task,
-  not an emergency.
+  not an emergency. Note what that would cost: opencode ships roughly one
+  release every 1.4 days, and the files these patches would touch churned
+  21-54 commits in 90 days.
 
-| #   | File         | Purpose                                                  | Task | Status                         |
-| --- | ------------ | -------------------------------------------------------- | ---- | ------------------------------ |
-| P1  | _not needed_ | Per-turn usage telemetry to a Unix socket                | 1.7  | upstream mechanism found       |
-| P2  | _not needed_ | Mid-stream budget abort                                  | 4.6  | upstream mechanism found       |
-| P3  | _not needed_ | Non-overridable permission policy from `$HALYARD_POLICY` | 1.8  | two env vars, one undocumented |
-| P4  | _not needed_ | Provider base URL forced to `aigw`, local creds disabled | 1.7  | upstream mechanism found       |
-| P5  | _not needed_ | `onTurnStart` / `onTurnEnd` hooks                        | 1.8  | start hooks; end is `agentd`'s |
-| P6  | _wrong fix_  | Stable structured event stream matching SPEC §7.2        | 1.8  | adapter in `agentd`            |
+| #   | File         | Purpose                                                                                                                                              | Task | Status                         |
+| --- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------------------------------ |
+| P1  | _not needed_ | Per-turn usage telemetry, read off the event stream - **not** a Unix socket                                                                          | 1.9  | upstream mechanism found       |
+| P2  | _not needed_ | Mid-stream budget abort                                                                                                                              | 4.6  | upstream mechanism found       |
+| P3  | _not needed_ | Non-overridable permission policy (§11.2 says from `$HALYARD_POLICY`; the real mechanism is inline JSON in `OPENCODE_PERMISSION`, never a file path) | 1.10 | two env vars, one undocumented |
+| P4  | _not needed_ | Provider base URL forced to `aigw`, local creds disabled                                                                                             | 1.9  | upstream mechanism found       |
+| P5  | _not needed_ | `onTurnStart` / `onTurnEnd` hooks                                                                                                                    | 1.10 | start hooks; end is `agentd`'s |
+| P6  | _wrong fix_  | Stable structured event stream matching SPEC §7.2                                                                                                    | 1.10 | adapter in `agentd`            |
 
 ## Why this directory is empty
 

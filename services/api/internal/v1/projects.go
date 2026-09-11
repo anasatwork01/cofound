@@ -22,7 +22,8 @@ import (
 //
 // §7.1 takes either a template version or a prompt, never both: with a prompt
 // the agent picks the template itself. The SLO is p50 < 10s to a first preview
-// (§17.3), which is why this returns as soon as the project and branch rows
+// (§17.3, provisional until task 1.19 measures Modal's snapshot and restore
+// latency), which is why this returns as soon as the project and branch rows
 // exist rather than waiting for a sandbox — acquiring one is task 1.3's job,
 // and doing it here would put a Modal round trip inside the create.
 func (h *Handlers) createProject(w http.ResponseWriter, r *http.Request) error {

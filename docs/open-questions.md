@@ -211,12 +211,13 @@ not block protecting a process, which is in place.
 
 ---
 
-## Q8 - SPEC §3.2 and §5.1 rest on a fact that is no longer true
+## ~~Q8 - SPEC §5.1 rests on a fact that is no longer true~~
 
-**Status: needs a human. This is a fact correction, not a re-litigation of
-§5.**
+**Resolved 2026-09-11 by the human: `sandboxd` stays Python — a Python sidecar
+for Modal, as specified.** The decision stands; only its stated reason was
+wrong. This was a fact correction, not a re-litigation of §5.
 
-SPEC §3.2 line 220 says:
+SPEC §5.1 line 220 says:
 
 > "Modal's SDK is Python. There is no supported Go SDK, so an all-Go backend
 > would need a Python sidecar for sandbox orchestration anyway."
@@ -241,16 +242,49 @@ verified:
 - Python has a typed `ResourceExhaustedError` and a complete `.aio` surface. Go
   has neither, and its throttling default is an unbounded silent wait.
 
-**Asked, not assumed:** should §3.2/§5.1's wording be corrected to "the Go SDK
-exists but is pre-1.0 and not at parity" — keeping the decision, fixing the
-reason, and making it re-examinable when the SDK reaches 1.0? Nothing is
-blocked on the answer; `sandboxd` stays Python meanwhile.
+### What the resolution changes
 
-## Q9 - `OPENCODE_DISABLE_PROJECT_CONFIG` is undocumented and load-bearing
+Nothing in the code: `sandboxd` was already Python and stays Python. What
+changes is the **record of why**, so the decision is re-examinable on its real
+grounds rather than on a premise that has already expired:
+
+> `sandboxd` is Python because the Modal Go SDK is pre-1.0 and not at parity,
+> and because Modal Functions are Python-only — so SPEC §14's crawler keeps
+> Python in the stack regardless.
+
+That reason carries a **re-examination trigger** the old one did not: when
+`modal-client/go` reaches 1.0 and parity, the question is live again. Until
+then it is closed. §21 decision 2's resolution clause is corrected to say this.
+
+### Erratum: SPEC §5.1 line 220 is left as written
+
+`docs/SPEC.md` is the contract, recovered verbatim, and `CLAUDE.md` treats it as
+such — so a factual error in it is recorded here rather than silently edited.
+The line still reads:
+
+> "Modal's SDK is Python. There is no supported Go SDK, so an all-Go backend
+> would need a Python sidecar for sandbox orchestration anyway."
+
+The first sentence and the conclusion are both fine. **The middle clause is
+false.** The proposed one-line replacement, for a human to approve:
+
+> "Modal's SDK is Python. The Go SDK is pre-1.0 and not at parity, and Modal
+> Functions are Python-only, so an all-Go backend would need a Python sidecar
+> for sandbox orchestration anyway."
+
+Same section count, same conclusion, no renumbering. Say the word and it goes
+in; until then this erratum is the record.
+
+## ~~Q9 - `OPENCODE_DISABLE_PROJECT_CONFIG` is undocumented and load-bearing~~
+
+**Resolved 2026-09-11 by the human: use it, and pin it.** Both environment
+variables are adopted, and the undocumented one is pinned by a test so an
+upstream rename fails CI instead of silently opening the sandbox. The
+reasoning, and what the pin does and does not cover, is below.
 
 SPEC §17's sandbox boundary depends on it, and it is not in opencode's
 documented environment-variable table — it exists only in source
-(`config/config.ts:420`, `config/paths.ts:27`).
+(`config/config.ts:420` and, load-bearingly, `config/paths.ts:27`).
 
 Without it, two escapes are open on the pinned tag, both verified in source:
 
@@ -262,28 +296,288 @@ Without it, two escapes are open on the pinned tag, both verified in source:
    entirely.
 
 Working agreement 4 says an undocumented surface is not something to build
-hopeful code on. The proposal is to **use it anyway and pin it with a test** —
-task 1.7 or 1.8 starts `opencode serve` against a hostile fixture repo and
-asserts the policy holds and the plugin never runs — so an upstream rename
-fails CI rather than silently opening the sandbox. **Confirm that is acceptable,
-or name a different mechanism.**
+hopeful code on. There was no alternative that did not weaken §17: the
+documented `OPENCODE_PERMISSION` alone is escapable through repo-defined
+agents, and `OPENCODE_PURE` — which is documented — disables **all** external
+plugins including Halyard's own supervisor, so it cannot be the policy
+mechanism. The resolution is therefore to depend on the undocumented flag and
+make that dependency **loud**.
 
-Related: SPEC §11.3 treats `AGENTS.md` as the untrusted-repo-content risk. The
-plugin directory is sharper and should be added to it.
+### The adopted mechanism
+
+Two environment variables, set by `sandboxd` when it launches the sandbox.
+Neither is optional:
+
+| Variable                          | Value                                            | Why                                                              |
+| --------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------- |
+| `OPENCODE_PERMISSION`             | inline JSON, catch-all deny plus explicit allows | Merged after every config file, so the repo cannot merge over it |
+| `OPENCODE_DISABLE_PROJECT_CONFIG` | `1`                                              | Closes the two escapes above. **Undocumented upstream**          |
+
+`tool.execute.before` is the second, independent enforcement layer: it denies by
+throwing, it is documented, and it does not depend on config precedence at all.
+`permission.ask` is **not** a lever — it is declared in the plugin types but
+dispatched at zero call sites (see `docs/verified.md` §22 item 6).
+
+### How the pin works, and what it does not cover
+
+`tests/contracts/test_opencode_upstream_contract.py` asserts the mechanisms
+still exist in the pinned submodule source — the flag's guard sites, the
+`findLast` evaluation, the concatenating `Permission.merge`, the agent-after-user
+merge order, and the absence of a `permission.ask` dispatch. A rename or a
+change of shape fails CI. **This pins the mechanism, not the behaviour:** it is
+still a source reading. Tasks 1.7/1.8 own the behavioural half — start
+`opencode serve` against a hostile fixture repo carrying
+`.opencode/opencode.json`, `.opencode/agent/evil.md` and
+`.opencode/plugin/evil.ts`, and assert the policy holds and the plugin never
+executes.
+
+Related, and **not** closed by this resolution: SPEC §11.3 treats `AGENTS.md` as
+the untrusted-repo-content risk. The plugin directory is sharper and belongs in
+§11.3's threat model — a SPEC text change, so it is recorded as an erratum
+rather than silently edited. See the §11.3 erratum below.
+
+## SPEC errata
+
+`docs/SPEC.md` is the contract. `CLAUDE.md` says its section numbers are cited
+throughout the codebase, and the file is committed verbatim (it is in
+`.prettierignore` for that reason). So where task 1.1 found the SPEC stating
+something now known to be false, the correction is **recorded here and not
+silently applied**.
+
+**Fourteen of these would cause someone to build the wrong thing**, so this is
+not a tidying exercise. None of them renumbers a section. The prose changes in
+this repository that were safe to make have already been made — this list is
+only what lives inside the contract itself.
+
+Grouped by section, worst first.
+
+### §5.1 line 220 — "there is no supported Go SDK"
+
+See the Q8 erratum above, which carries the proposed one-line replacement. The
+decision (a Python sidecar for Modal) is unchanged and was reconfirmed by the
+human; only the middle clause is false. Noted here too because this list is
+where someone will look.
+
+### §9 — the sandbox lifecycle, six items
+
+This is the section task 1.3 implements, and it is the one task 1.1 damaged
+most. The corrected flow is written up in full in `services/sandboxd/README.md`;
+these are the specific lines.
+
+**§9 responsibilities line — "create, resume, snapshot, stop"**
+
+There is no resume primitive in Modal. Proposed:
+
+> **Responsibilities:** create, **wake**, snapshot, stop sandboxes; maintain a
+> warm pool; expose tunnels; enforce quotas; heartbeat usage. There is no resume
+> — waking a project creates a **new** sandbox and restores its snapshot.
+
+**§9 step 2 — "create ... with the project's Modal Volume mounted"**
+
+`volumes=` is a `Sandbox.create` parameter only, so a warm sandbox (step 1) can
+never have a Volume attached. Steps 1 and 2 are mutually exclusive as written.
+Proposed:
+
+> 2. Miss → create from the template's pre-baked image, then `mount_image` the
+>    project's directory snapshot. **Not a Volume**: `volumes=` is create-time
+>    only, so Volumes and the warm pool are mutually exclusive, and Volume v1's
+>    50,000-file budget does not fit a `node_modules`.
+
+**§9 step 5 — "Register the tunnel URL ... in Workers KV"**
+
+Reads as a one-time registration. Modal assigns a random hostname with no way to
+pin one, and it changes on every create and every restore. Proposed:
+
+> 5. Register the tunnel URL against `<branch>.<project>.preview.<domain>` in
+>    Workers KV, **rewriting it on every incarnation and invalidating the
+>    previous entry** — Modal's hostname is random and unpinnable. Restrict it
+>    with `inbound_cidr_allowlist` so only our own edge can reach it; a Modal
+>    tunnel is public by default.
+
+**§9 step 7 — "Idle 15 minutes → snapshot filesystem, stop sandbox, keep the volume"**
+
+Three problems: Modal's `idle_timeout` has no pre-termination hook so it would
+kill _without_ snapshotting; a merely-running `agentd` is not "active" by
+Modal's definition; and the retained artifact is a snapshot image whose id only
+we can record. Proposed:
+
+> 7. Idle 15 minutes, **tracked by `sandboxd` rather than Modal's
+>    `idle_timeout`** (which has no pre-termination hook and does not count a
+>    running daemon as activity) → snapshot the project directory with
+>    `ttl=None`, record the image id and expiry in Postgres because Modal cannot
+>    list snapshots, then terminate. Add: before the **24-hour** maximum
+>    lifetime, snapshot and rotate to a replacement sandbox.
+
+**§9 quota table — "CPU | 2 vCPU"**
+
+Correct as a quota, a units trap at the call site. Proposed footnote:
+
+> Modal's `cpu=` takes **physical cores**, which its pricing page labels "2 vCPU
+> equivalent" — so this is `cpu=1.0, memory=4096`. `cpu=2.0` provisions twice
+> the CPU and raises spend ~1.6×, and a bare scalar is only a request that
+> permits billed bursting; the tuple form is the hard cap.
+
+**§9 egress allowlist — "the project's own app database host"**
+
+Now implementable, but not as a domain entry. Modal's domain allowlist matches
+TLS/443 SNI only. Proposed addition:
+
+> The app database host cannot be authorised by name — Postgres on 5432 is not
+> TLS-on-443, so it needs a CIDR entry. Domain fronting is a documented bypass,
+> so a shared-CDN entry is an exfiltration channel and `*.github.com` grants
+> every repository on GitHub.
+
+**§9 warm pool — "2–5 per popular template image per region"**
+
+Modal has no pool primitive, a pooled sandbox with `agentd` idling gets reaped,
+and narrow-region pinning costs 1.75× while _worsening_ cold start. Proposed
+addition:
+
+> Modal has no pool primitive; this is ours to build over sandbox ids. Prefer
+> broad regions (`us`/`eu`/`ap`, 1.15×) — narrow regions cost 1.75× and reduce
+> the schedulable pool, which is the opposite of what a warm pool is for. Size
+> it against ~$0.24/hr per idle sandbox (§19), and measure cold create first
+> (task 1.19) before committing to a pool at all.
+
+### §11.2 — "Required patches", and P3's row
+
+The heading says these patches are **required** and the third column asserts of
+each that it **cannot be config**. Task 1.1 found an upstream mechanism for all
+six. Proposed: retitle to **"§11.2 Behaviours we need from `opencode`"**, and
+replace the "Why it cannot be config" column with "How it is obtained", naming
+the mechanism per row (see `agent/patches/README.md`).
+
+P3's row additionally names a mechanism that never existed:
+
+> | P3 | Non-overridable permission policy loaded from `$HALYARD_POLICY` | ... |
+
+There is no `$HALYARD_POLICY`. Proposed:
+
+> | P3 | Non-overridable permission policy | `OPENCODE_PERMISSION` carrying
+> **inline JSON** — never a file path, which the sandbox could write — plus
+> `OPENCODE_DISABLE_PROJECT_CONFIG=1`, because the env var alone is escapable
+> through repo-defined agents. |
+
+### §11.3 — the untrusted-repo threat model stops at `AGENTS.md`
+
+§11.3 names the project's own `AGENTS.md` as the untrusted input. That is true
+and incomplete: on the pinned tag, opencode **auto-discovers and executes**
+plugins from the repository itself (`.opencode/plugin/`, plus npm packages named
+in the repo's `opencode.json`), and plugin code receives a Bun shell handle and
+the authenticated server SDK. That is arbitrary code execution **outside the
+tool-permission system entirely** — no permission rule is consulted, because
+plugins are not tools.
+
+`AGENTS.md` influences the model. A repo plugin owns the process. Proposed
+addition:
+
+> A project's `.opencode/` directory is untrusted input in a stronger sense than
+> `AGENTS.md`: opencode discovers and executes plugins from it, outside the
+> tool-permission system. `sandboxd` therefore sets
+> `OPENCODE_DISABLE_PROJECT_CONFIG=1`, and Halyard's own supervisor plugin is
+> installed globally in the image (`~/.config/opencode/plugin/`) rather than per
+> project.
+
+### §11.4 — `agentd`'s telemetry source and both turn hooks
+
+**"Reads P1 telemetry"** — there is no P1 and no Unix socket. Proposed: "Reads
+per-turn usage off `opencode`'s event stream (`message.updated`), batches it,
+posts heartbeats to `sandboxd`." Note the numbers are pre-netted — see §16.2
+below.
+
+**"At `onTurnStart`: flush any dirty human edits into a checkpoint commit before
+the agent reads files"** — achievable via the blocking `chat.message` hook, with
+**one residual data-loss window the SPEC should state**: `chat.message` fires
+_after_ the message's explicitly attached files and `@`-mentions have already
+been read from disk. Tool-driven reads (`read`/`grep`/`glob`) all happen after
+the hook, so the main scenario is covered. Proposed addition: "…using the
+blocking `chat.message` plugin hook. Attached-file content is resolved before
+that hook fires, so `agentd` checkpoints when it **accepts** the prompt, before
+forwarding it."
+
+**"At `onTurnEnd`: commit the checkpoint, release the lease"** — there is no
+blocking turn-end hook; `session.idle` is a fire-and-forget event. Proposed:
+"After `session.idle`, `agentd` commits the checkpoint and swaps the lease
+**before submitting the next prompt** — it cannot hold a turn open, so
+serialisation is what makes this safe. If anything other than `agentd` can POST
+a prompt, the lease swap races."
+
+### §16.2 — the four meters need a mapping rule
+
+This is the clause the generated schemas carry, and the obvious mapping
+under-bills. The four-meter split is right and stays; what is missing is what
+goes in each. Proposed addition:
+
+> `tokens_in` receives the agent's **already cache-adjusted** input, so billable
+> input is `tokens_in + tokens_cache_read + tokens_cache_write`; `tokens_out`
+> receives **output plus reasoning**, because the agent's output field excludes
+> reasoning and there is no fifth meter. Emitting the upstream fields verbatim
+> under-bills by the whole cache volume and never bills reasoning at all.
+
+(`packages/schema/meters.schema.json` and `agent-events.schema.json` already say
+this, so the generated code carries it; §16.2 is the clause they derive from.)
+
+### §17.2 — the threat table cites a patch that does not exist
+
+> | Prompt injection via scraped content or the repo's own `AGENTS.md` | Policy
+> enforced outside the model (P3, egress allowlist, ...) |
+
+This is where an implementer looks for what actually stops prompt injection, and
+P3 is not a thing. Proposed: replace "P3" with "the `OPENCODE_PERMISSION` +
+`OPENCODE_DISABLE_PROJECT_CONFIG` policy and the `tool.execute.before` hook",
+and add the repo `.opencode/plugin/` vector alongside `AGENTS.md`.
+
+### §17.3 — the p50 < 10s SLO is provisional
+
+> | Time to first preview, new project from template | p50 < 10s, p95 < 25s |
+
+The Modal component is entirely unmeasured: no published timing exists for
+snapshot create or restore, and the SDK's own default snapshot timeout is 55s
+with support added for longer. Proposed: mark it "target, pending task 1.19"
+until measured. Container boot is ~0.5–1s of the budget; the rest is the
+reconcile step, which is ours.
+
+### §13.3 — the tunnel URL changes per incarnation, not per session
+
+> "a sandbox tunnel whose URL changes each session"
+
+It changes on every create **and** every restore, so a single long session can
+see several. The webhook-relay conclusion is unaffected and correct; the
+reasoning generalises to §9 step 5 and §14.2.
+
+### §19.2 — data residency has a concrete Modal-shaped blocker
+
+> "Data residency, if you intend to sell in the EU."
+
+Snapshots are stored in the **United States regardless of where the workload
+runs**, because filesystem snapshots are Modal Images underneath. So the moment
+a project is snapshotted, its whole filesystem leaves its region. The only
+mitigation offered is an Alpha customer-supplied-encryption-key option.
+
+_(Not to be confused with region pinning: filesystem and directory snapshots
+place no restriction on `region`. That limit belongs to memory snapshots, which
+this design does not use.)_
+
+### Phase 1 and Phase 2 scope lines list patches as deliverables
+
+Phase 1 names "opencode patches P1/P4/P5/P6" as scope; Phase 2's accept
+criterion states the p50 unqualified. Both follow from the entries above.
+`docs/TASKS.md` rows 1.9, 1.10, 1.19 and 4.6 have already been rewritten; the
+SPEC's own phase summaries have not.
 
 ## Blocking decisions (SPEC §21) - needed before phase 1
 
-| #   | Decision                                                                                                    | Owner | Blocks    | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| --- | ----------------------------------------------------------------------------------------------------------- | ----- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | Container host: Cloudflare Containers, or an external host (Fly.io / Railway / Cloud Run) behind Cloudflare | human | 0.10      | Depends on §22 item 2. Long-lived SSE and git packfile handling are the deciding constraints                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| 2   | ~~All-Python backend, or the Go/Python split~~                                                              | human | 0.4, 0.5  | **Resolved 2026-09-10: the Go/Python split, as specified.** Chosen over all-Python because api and gitd hold thousands of concurrent long-lived SSE streams and do heavy git packfile plumbing, where Go's memory-per-connection and process model are materially better; `sandboxd` stays Python either way because Modal has no Go SDK. Implemented by task 0.4 (`packages/chassis`). The original rationale is kept as the record of why it was a real question: **Depends on team size.** SPEC §5.1: at one or two engineers, go all-Python. Do not go all-Go. |
-| 3   | Neon for app databases, or schema-per-project on shared Postgres behind PgBouncer                           | human | 5.4, 3.9  | Branching is what makes preview migrations safe; losing it means building migration dry-runs yourself                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| 4   | Auth library for generated apps, pinned version                                                             | human | 5.6, 2.1  | Auth.js or Better Auth. Template-level, not per project                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| 5   | Registrar for domain sales                                                                                  | human | 3.5       |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| 6   | Credit denomination, retail price per credit, target gross margin                                           | human | 4.1       | SPEC §16.6: a normal turn should cost tens of credits. Never display fractions                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| 7   | Whether the free tier may publish to a custom domain                                                        | human | 4.10, 3.6 | **The main abuse lever.** Answer before phase 3 ships, not after                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| 8   | Revenue share on Stripe Connect (`application_fee_amount`)                                                  | human | 5.7       |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| 9   | Whether the console targets primarily non-technical users                                                   | human | 0.9       | The mockup assumes semi-technical. A purely non-technical audience needs warmer visuals and less code exposure - this changes the token layer, so decide before 0.9                                                                                                                                                                                                                                                                                                                                                                                                |
+| #   | Decision                                                                                                    | Owner | Blocks    | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| --- | ----------------------------------------------------------------------------------------------------------- | ----- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Container host: Cloudflare Containers, or an external host (Fly.io / Railway / Cloud Run) behind Cloudflare | human | 0.10      | Depends on §22 item 2. Long-lived SSE and git packfile handling are the deciding constraints                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 2   | ~~All-Python backend, or the Go/Python split~~                                                              | human | 0.4, 0.5  | **Resolved 2026-09-10: the Go/Python split, as specified.** Chosen over all-Python because api and gitd hold thousands of concurrent long-lived SSE streams and do heavy git packfile plumbing, where Go's memory-per-connection and process model are materially better; `sandboxd` stays Python either way — **not** because Modal lacks a Go SDK (it has had one since 2026-09-10; see the Q8 erratum) but because that SDK is pre-1.0 and not at parity, and because Modal Functions are Python-only, so §14's crawler keeps Python in the stack regardless. Reason corrected 2026-09-11; the decision itself is unchanged and was reconfirmed by the human. Implemented by task 0.4 (`packages/chassis`). The original rationale is kept as the record of why it was a real question: **Depends on team size.** SPEC §5.1: at one or two engineers, go all-Python. Do not go all-Go. |
+| 3   | Neon for app databases, or schema-per-project on shared Postgres behind PgBouncer                           | human | 5.4, 3.9  | Branching is what makes preview migrations safe; losing it means building migration dry-runs yourself                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| 4   | Auth library for generated apps, pinned version                                                             | human | 5.6, 2.1  | Auth.js or Better Auth. Template-level, not per project                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 5   | Registrar for domain sales                                                                                  | human | 3.5       |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| 6   | Credit denomination, retail price per credit, target gross margin                                           | human | 4.1       | SPEC §16.6: a normal turn should cost tens of credits. Never display fractions                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 7   | Whether the free tier may publish to a custom domain                                                        | human | 4.10, 3.6 | **The main abuse lever.** Answer before phase 3 ships, not after                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| 8   | Revenue share on Stripe Connect (`application_fee_amount`)                                                  | human | 5.7       |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| 9   | Whether the console targets primarily non-technical users                                                   | human | 0.9       | The mockup assumes semi-technical. A purely non-technical audience needs warmer visuals and less code exposure - this changes the token layer, so decide before 0.9                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 ## Long-lead items to start immediately
 

@@ -14,7 +14,7 @@ Status values: `unverified` · `verified` · `contradicted` · `blocked`
 | 2   | Cloudflare Containers - memory/CPU limits, max request duration, long-lived SSE, pricing                           | unverified | -          | Blocks SPEC §21 decision 1                                                                                                                                                                                                                                                                                                         |
 | 3   | Cloudflare for SaaS - custom hostname limits per zone, TLS issuance latency, apex support                          | unverified | -          | Blocks task 3.6                                                                                                                                                                                                                                                                                                                    |
 | 4   | Cloudflare Hyperdrive - supported Postgres providers, connection limits, latency                                   | unverified | -          | Blocks tasks 0.12, 3.9                                                                                                                                                                                                                                                                                                             |
-| 5   | Modal - Sandbox API, snapshot semantics, tunnel URL stability, volume perf, concurrency limits, non-Python client  | verified   | 2026-09-11 | Python `1.5.5` (wheel read). **No resume primitive**; resume is snapshot-and-recreate with a new id. Tunnel URLs are **not** stable. Deny-by-default egress **exists** (TLS/443 SNI only). A Go SDK now exists - §3.2/§5.1's premise is false. Latency unmeasured: 1.x needs a benchmark.                                          |
+| 5   | Modal - Sandbox API, snapshot semantics, tunnel URL stability, volume perf, concurrency limits, non-Python client  | verified   | 2026-09-11 | Python `1.5.5` (wheel read). **No resume primitive**; resume is snapshot-and-recreate with a new id. Tunnel URLs are **not** stable. Deny-by-default egress **exists** (TLS/443 SNI only). A Go SDK now exists - §5.1's premise is false. Latency unmeasured: 1.x needs a benchmark.                                               |
 | 6   | `opencode` - server API, config schema, MCP transport, plugin/hook surface; whether P1/P2/P3/P5 still need patches | verified   | 2026-09-11 | Pinned at `v1.18.30` (`3104c1428e`). **All six §11.2 patches have an upstream mechanism**; `agent/patches/` stays empty. P3 needs **two** env vars, one undocumented; repo `.opencode/plugin/` is RCE (§11.3 gap); `tokens.input` is cache-adjusted (§19 gap). Read, not run - tasks 1.7/1.8 must assert against a running server. |
 | 7   | Neon - project/branch creation API, branch limits, autoscaling, pricing at thousands of projects                   | unverified | -          | Blocks SPEC §21 decision 3, task 5.4                                                                                                                                                                                                                                                                                               |
 | 8   | GitHub Apps - fine-grained permission names, installation token TTL, per-installation rate limits                  | unverified | -          | Blocks task 5.12                                                                                                                                                                                                                                                                                                                   |
@@ -203,6 +203,18 @@ Two implementation traps, both verified in source rather than docs:
    updating **only** the domain allowlist silently sets the CIDR allowlist to
    empty and kills all non-443 egress. The Go SDK refuses the same call
    outright. The two SDKs are not behaviourally equivalent.
+
+   The `Sandbox.create` path is a **different function** —
+   `_build_network_access` (`modal/sandbox.py:250-269`) — and it is better
+   behaved, which is worth knowing precisely because it makes the behaviours
+   inconsistent: both-`None` is an explicit, deliberate `OPEN`, and
+   `block_network=True` combined with either allowlist **raises**
+   `InvalidError` rather than silently winning. But the same `list(x or [])`
+   applies, so passing one allowlist and not the other still empties the other.
+   The practical rule is identical on both paths; an **empty list on create is
+   therefore a reliable, deliberate deny-all**, which is the right default for
+   §17.
+
 2. **Prefer an empty allowlist to `block_network=True`.** `block_network` also
    disables i6pn, is mutually exclusive with all three allowlist parameters,
    and forecloses sandbox-to-sidecar addressing.
@@ -336,11 +348,16 @@ and `npm install` as the dominant Started→Ready cost. **Budget the sandbox as
 ~0.5–1s of SPEC §9's p50 < 10s, not most of it.** The rest is the reconcile
 step, and that is ours.
 
-**Task 1.x must include a benchmark harness** against a real workspace
-measuring p50/p95/p99 for `snapshot_filesystem`, `snapshot_directory` of the
-project dir, and `Sandbox.create` from each, on a representative repo with
-`node_modules` installed. That measurement becomes this row — not a doc.
-Do not commit to a resume-latency SLO before it exists.
+**Task 1.19 is that benchmark**, and its harness has landed in this branch:
+`services/sandboxd/src/halyard_sandboxd/bench/` measures p50/p95/p99 for
+`snapshot_filesystem`, `snapshot_directory`, `Sandbox.create` from each, and
+`mount_image` into a running sandbox, reporting each phase separately so the
+split between Modal's share and ours is visible. It has **not been run** — that
+needs a real workspace and spends money.
+
+Run it **before** tasks 1.3 and 1.5, not after: it depends on nothing from
+them, and its numbers are what should settle 1.3's snapshot-versus-Volume choice
+and 1.5's pool sizing. Do not commit to a resume-latency SLO before it exists.
 
 `readiness_probe` + `wait_until_ready()` are GA and are the right instrument:
 `modal.Probe.with_tcp(port)` on the dev server port makes "resumed" mean
@@ -351,7 +368,7 @@ Region pinning works (`us`/`eu`/`ap` broad, `us-east` etc. narrow) but **narrow
 regions cost 1.75× and worsen cold start** — the two things a warm pool exists
 to fix — against 1.15× for broad. Prefer broad regions for the pool.
 
-### SPEC §3.2 and §5.1 rest on a fact that is no longer true
+### SPEC §5.1 rests on a fact that is no longer true
 
 > "Modal's SDK is Python. There is no supported Go SDK, so an all-Go backend
 > would need a Python sidecar for sandbox orchestration anyway."
@@ -372,11 +389,15 @@ The **conclusion** still holds, on grounds the spec did not cite:
 - Python has a typed `ResourceExhaustedError` and a complete `.aio` surface;
   Go has neither.
 
-So: keep `sandboxd` in Python, and **correct §3.2/§5.1's stated reason** to "the
-Go SDK exists but is pre-1.0 and not at parity". Recorded in
-`docs/open-questions.md` rather than acted on — §21 decision 2 cites the false
-premise in its resolution, and re-opening a resolved §21 decision is a human's
-call, not this task's.
+So: keep `sandboxd` in Python, and **correct §5.1's stated reason** to "the
+Go SDK exists but is pre-1.0 and not at parity".
+
+**Resolved 2026-09-11 by the human: `sandboxd` stays Python — a Python sidecar
+for Modal, as specified.** §21 decision 2's resolution clause is corrected to
+cite the real grounds, and the decision now carries a re-examination trigger it
+did not have before: when `modal-client/go` reaches 1.0 and parity, the question
+is live again. SPEC §5.1's line is left as written and recorded as an erratum,
+because the SPEC is the contract. See `docs/open-questions.md` Q8.
 
 ### The surface moves, so isolate it
 
@@ -412,13 +433,22 @@ three are deprecated in 1.5.5 and slated for removal in 1.6.0.
 ### One thing to tell the business, not the code
 
 **Snapshots are stored in the United States regardless of where the workload
-runs**, and snapshot-enabled sandboxes cannot pin a region. A user's whole
-project filesystem — source, any `.env` written to disk, build output — leaves
-its region the moment it is snapshotted. If Halyard ever claims EU data
-residency, snapshotting breaks that claim. The only mitigation on offer is an
-Alpha customer-supplied-encryption-key option
+runs.** A user's whole project filesystem — source, any `.env` written to disk,
+build output — leaves its region the moment it is snapshotted. If Halyard ever
+claims EU data residency, snapshotting breaks that claim. The only mitigation on
+offer is an Alpha customer-supplied-encryption-key option
 (`_experimental_encryption_key` on `snapshot_directory`/`mount_image`). Flagged
 for SPEC §21.
+
+**Correction, because an earlier draft of this section conflated two features:**
+the "cannot pin a region" restriction belongs to **memory** snapshots
+(`_experimental_enable_snapshot=True`), alongside their same-instance-type
+restore and no-GPU limits. **Filesystem and directory snapshots place no
+restriction on `region`** — `_experimental_create`'s own docstring lists region
+placement and filesystem snapshots as both supported, and there is no
+client-side guard tying them together. Only the US-residency point applies to
+both. This matters practically: it means the warm pool can pin a broad region
+_and_ snapshot, which the merged version of the sentence appeared to forbid.
 
 ### What this does not establish
 
@@ -427,7 +457,12 @@ read from the 1.5.5 wheel source, the Go SDK source and tags, Modal's
 documentation, changelogs and pricing page. Specifically still unmeasured and
 unconfirmed:
 
-- Snapshot create/restore latency (see the benchmark requirement above).
+- Snapshot create/restore latency. **The harness now exists** —
+  `services/sandboxd/src/halyard_sandboxd/bench/`, run via
+  `python -m halyard_sandboxd.bench` — and it has never been run: it needs a
+  real workspace, costs money, and is gated behind explicit opt-in. Task 1.19
+  is the run. Until then every latency statement in this section is a doc
+  quote, not a measurement.
 - That a blocked destination actually fails — assert it in 1.3's tests.
 - Tunnel URL instability across a snapshot cycle (inferred, not stated).
 - Whether Sandboxes count against the plan container cap (inferred from "Each
@@ -454,14 +489,14 @@ config". On the pinned tag, **all six have an upstream mechanism**. §11.1's own
 rule — "Anything achievable by configuration must not be a patch" — therefore
 points at not forking at all.
 
-| #      | §11.2's stated reason                                    | What the pinned tag actually has                                                                                                                                                  | Verdict                                       |
-| ------ | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| **P1** | "upstream doesn't expose them in the shape we need"      | `AssistantMessage.tokens` = `{ input, output, reasoning, cache: { read, write } }`, plus `cost`. That is the shape, exactly — **but the fields do not mean what they look like**. | **no patch — read the metering trap below**   |
-| **P2** | "must interrupt a running turn"                          | `POST /api/session/{sessionID}/interrupt` (v2), or legacy `POST /session/{sessionID}/abort`                                                                                       | **no patch**                                  |
-| **P3** | "the user's repo must not be able to relax the policy"   | `OPENCODE_PERMISSION` env var, merged **after every config file** — but it is **not sufficient alone**                                                                            | **no patch — two env vars, one undocumented** |
-| **P4** | "every token must be metered and capped"                 | `provider.<id>.options.baseURL` in config                                                                                                                                         | **no patch**                                  |
-| **P5** | "`agentd` commits checkpoints at turn boundaries"        | Turn **start** is a blocking `chat.message` hook. Turn **end** has no blocking hook — only fire-and-forget events.                                                                | **no patch — but P5 changes shape**           |
-| **P6** | "the UI contract must not drift with upstream refactors" | A documented OpenAPI contract with 94 event types                                                                                                                                 | **no patch — but see below**                  |
+| #      | §11.2's stated reason                                    | What the pinned tag actually has                                                                                                                                                         | Verdict                                       |
+| ------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| **P1** | "upstream doesn't expose them in the shape we need"      | `AssistantMessage.tokens` = `{ total, input, output, reasoning, cache: { write, read } }`, plus `cost`. That is the shape, exactly — **but the fields do not mean what they look like**. | **no patch — read the metering trap below**   |
+| **P2** | "must interrupt a running turn"                          | `POST /api/session/{sessionID}/interrupt` (v2), or legacy `POST /session/{sessionID}/abort`                                                                                              | **no patch**                                  |
+| **P3** | "the user's repo must not be able to relax the policy"   | `OPENCODE_PERMISSION` env var, merged **after every config file** — but it is **not sufficient alone**                                                                                   | **no patch — two env vars, one undocumented** |
+| **P4** | "every token must be metered and capped"                 | `provider.<id>.options.baseURL` in config                                                                                                                                                | **no patch**                                  |
+| **P5** | "`agentd` commits checkpoints at turn boundaries"        | Turn **start** is a blocking `chat.message` hook. Turn **end** has no blocking hook — only fire-and-forget events.                                                                       | **no patch — but P5 changes shape**           |
+| **P6** | "the UI contract must not drift with upstream refactors" | A documented OpenAPI contract with 94 event types                                                                                                                                        | **no patch — but see below**                  |
 
 ### P3 needs two environment variables, and `OPENCODE_PERMISSION` alone is not enough
 
@@ -492,13 +527,36 @@ Those agents come from the repository. `ConfigAgent.load` globs
 `.opencode/agent/helper.md` with relaxed frontmatter permissions, its rules
 land last, `findLast` picks them, and the sandbox policy is gone.**
 
-`OPENCODE_DISABLE_PROJECT_CONFIG=1` is what actually closes this.
-`config.ts:420` guards the whole project block behind it — the `opencode.json`
-walk, `ConfigAgent.load`, `ConfigAgent.loadMode` **and** `ConfigPlugin.load` —
-and `config/paths.ts:27` drops the upward `.opencode` scan. The home-rooted
-`~/.opencode` scan is deliberately outside the guard (`paths.ts:34-38`,
-`start`/`stop` both `Global.Path.home`), so Halyard's own globally-installed
-supervisor plugin still loads. That is exactly the split we want.
+`OPENCODE_DISABLE_PROJECT_CONFIG=1` is what actually closes this — but **not
+where you would expect, and the distinction matters for what to watch on an
+upstream bump.**
+
+`config.ts:420` guards only the upward `opencode.json` / `.jsonc` walk. The loop
+that loads the repository's agents, commands and plugins (`config.ts:438`,
+calling `ConfigAgent.load` at `:474`, `loadMode` at `:475` and
+`ConfigPlugin.load` at `:478`) sits **outside** that guard. Those are suppressed
+only **indirectly**, because `ConfigPaths.directories` (`paths.ts:27`) stops
+contributing the repository's `.opencode` paths when the flag is set, so the
+loop has nothing repo-controlled to iterate.
+
+The security conclusion is unchanged — with the flag set, all of it is
+suppressed — but **`paths.ts:27` carries more of §17's weight than
+`config.ts:420` does.** An upstream change that fed that loop from anywhere
+other than `ConfigPaths.directories` would re-open the escape with the flag
+still set, and it would not touch the line anyone would think to check. The pin
+test asserts the chain, not just the flag.
+
+The home-rooted `~/.opencode` scan is deliberately outside the guard
+(`paths.ts:34-38`, `start` and `stop` both `Global.Path.home`), so Halyard's own
+globally-installed supervisor plugin still loads. That is exactly the split we
+want.
+
+One route into that same loop is **not** guarded at all:
+`Flag.OPENCODE_CONFIG_DIR` is appended to the directory list unconditionally
+and `config.ts:439` treats it like a `.opencode` directory. That is a
+Halyard-side invariant rather than an upstream defect — **never point
+`OPENCODE_CONFIG_DIR` at anything the repository can write** — and it is
+recorded in the pin test's failure text.
 
 **Both variables are required, and one of them is undocumented.**
 `OPENCODE_DISABLE_PROJECT_CONFIG` does not appear in the CLI documentation's
@@ -582,6 +640,10 @@ Both headline fields are already net of something. For §19's ledger:
 - **billable input = `input + cache.read + cache.write`**
 - **billable output = `output + reasoning`**
 
+`total` is present too, and is **not** the sum of those fields — it is the
+provider's own `usage.totalTokens`, passed through unadjusted. Do not reconcile
+one against the other; pick the components and sum them yourself.
+
 Treating `tokens.input` as the provider's input count under-bills by the entire
 cache volume — which on a cached agent loop is the _majority_ of input tokens.
 opencode also normalises cache-write across providers that report it only in
@@ -661,7 +723,15 @@ behaviour against a running `opencode serve`:
   policy and cannot get its plugin executed, with both env vars set.
 
 Until those exist, the honest status is "no patch appears necessary", not "no
-patch is necessary". The P3 precedence chain in particular — `OPENCODE_PERMISSION`
+patch is necessary".
+
+**Resolved 2026-09-11 by the human for P3 specifically: use both environment
+variables, and pin the undocumented one.**
+`tests/contracts/test_opencode_upstream_contract.py` asserts every mechanism
+above still exists in the pinned source, so an upstream rename fails CI rather
+than silently opening the sandbox. That pins the **mechanism**; tasks 1.7/1.8
+still own the behavioural assertion against a running server. See
+`docs/open-questions.md` Q9. The P3 precedence chain in particular — `OPENCODE_PERMISSION`
 merged last → remeda source-wins → `findLast` evaluation → agent rules appended
 after → project config suppressed by `OPENCODE_DISABLE_PROJECT_CONFIG` — is a
 five-step inference. Each step is individually confirmed in source; the chain has
@@ -687,9 +757,11 @@ multi-hour task with a real chance of silently mis-applying the policy patch.
 
 `github.com/sst/opencode` now 301-redirects to `github.com/anomalyco/opencode`
 (same team, rebranded from SST to Anomaly Innovations), and the default branch is
-**`dev`**, not `main`. SPEC §3.4, §11 and §22 item 6 all still cite the `sst`
-path. The submodule URL and those citations need updating; CI tooling should
-target `dev` semantics.
+**`dev`**, not `main`. Checked rather than assumed: `.gitmodules` already points
+at the `anomalyco` path, and no §-citation in this repository names a GitHub URL
+— so **nothing needs renaming**. This note exists only so the rebrand is not
+rediscovered as a surprise. CI tooling that tracks upstream should target `dev`
+semantics.
 
 ### Other facts about the pinned tag
 

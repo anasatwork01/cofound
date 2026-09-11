@@ -144,12 +144,24 @@ export interface UsageTick {
   sandbox_seconds: number;
 }
 /**
- * Four separate counts, never one total. SPEC 16.2: they differ by roughly an order of magnitude in cost, and a combined meter misprices heavy sessions.
+ * Four separate counts, never one total. SPEC 16.2: they differ by roughly an order of magnitude in cost, and a combined meter misprices heavy sessions. The upstream agent reports FIVE fields and two of them are already net of something, so each field below states exactly what it receives - the obvious mapping under-bills. See docs/verified.md, SPEC 22 item 6, 'The metering trap'.
  */
 export interface TokenUsage {
+  /**
+   * The agent's already cache-adjusted input count, NOT the provider's raw input. Upstream computes it as inputTokens - cacheRead - cacheWrite, so total billable input is in + cache_read + cache_write. Putting the provider's raw count here double-counts the cache fields.
+   */
   in: number;
+  /**
+   * Output PLUS reasoning. Upstream's output field already excludes reasoning tokens, and SPEC 16.2 mandates four meters with no fifth, so reasoning is folded in here. Emitting upstream's output verbatim never bills reasoning at all.
+   */
   out: number;
+  /**
+   * Cache-read input tokens, counted separately because they are roughly an order of magnitude cheaper. Billable, and on a cached agent loop usually the majority of input.
+   */
   cache_read: number;
+  /**
+   * Cache-write input tokens. Billable, and normalised upstream across providers that report it only in metadata.
+   */
   cache_write: number;
 }
 /**

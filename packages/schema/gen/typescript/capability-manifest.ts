@@ -118,7 +118,7 @@ export interface ManifestEnv {
 export interface ManifestWebhook {
   provider: string;
   /**
-   * SPEC 13.3: third-party webhooks cannot target a sandbox tunnel whose URL changes each session, so they hit a stable relay that forwards to whichever preview is live and queues with replay when none is.
+   * SPEC 13.3: third-party webhooks cannot target a sandbox tunnel, whose URL changes on every create and every restore - Modal assigns a random hostname and offers no way to pin one - so they hit a stable relay that forwards to whichever preview is live and queues with replay when none is.
    */
   relay_path: string;
   /**
