@@ -1,0 +1,90 @@
+# Deploys the console Worker. Task 0.12.
+#
+# INERT UNTIL SOMEONE TURNS IT ON. Every job is gated on the repository
+# variable DEPLOY_CONSOLE_ENABLED being "true", because this workflow needs a
+# Cloudflare account that does not exist yet. A deploy workflow that fails for
+# want of a secret trains people to ignore red, so this one skips instead.
+#
+# To enable, see infra/cloudflare/RUNBOOK.md — it lists the exact secrets, the
+# API token scopes, and the order to do things in.
+name: deploy console
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/console/**"
+      - "packages/ui/**"
+      - "packages/schema/**"
+      - ".github/workflows/deploy-console.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Which environment to deploy
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+
+# A second push should not race the first onto the same Worker. Staging
+# cancels; production does not, because cancelling a half-finished production
+# deploy is worse than queueing behind one.
+concurrency:
+  group: deploy-console-${{ github.event.inputs.environment || 'staging' }}
+  cancel-in-progress: ${{ (github.event.inputs.environment || 'staging') == 'staging' }}
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: deploy ${{ github.event.inputs.environment || 'staging' }}
+    if: vars.DEPLOY_CONSOLE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    # GitHub Environments carry the secrets and, for production, the required
+    # reviewer. The protection rule is configured in repository settings, not
+    # here — this only names which environment to draw from.
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: tv
+        run: ./scripts/tool-versions.sh >> "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ steps.tv.outputs.pnpm }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ steps.tv.outputs.nodejs }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Deploy what CI proved. The same build runs in the js job on every PR, so
+      # a failure here is an environment difference rather than a code one.
+      - name: Build the Worker
+        run: pnpm --filter @halyard/console cf:build
+
+      # `--env` is not optional: without it wrangler publishes to the default
+      # environment, which is neither staging nor production.
+      - name: Deploy
+        working-directory: apps/console
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          pnpm exec wrangler deploy \
+            --env "${{ github.event.inputs.environment || 'staging' }}" \
+            --var "HALYARD_COMMIT:${GITHUB_SHA}"
+
+      # §22 item 1 established that the real deploy-time ceiling is Worker
+      # startup CPU (1s, rejected as error 10021), not bundle size. wrangler
+      # prints startup_time_ms; surfacing it here is what turns a slow creep
+      # into something someone notices before a deploy is refused.
+      - name: Record startup time
+        working-directory: apps/console
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          pnpm exec wrangler deploy \
+            --env "${{ github.event.inputs.environment || 'staging' }}" \
+            --dry-run 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"

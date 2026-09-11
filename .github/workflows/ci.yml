@@ -112,6 +112,49 @@ jobs:
       # this is what stops 0.12 discovering a broken build.
       - run: pnpm --filter @halyard/console build
 
+  image:
+    name: service image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      # Builds `api` only, not all four. api is the only Go service with
+      # third-party dependencies today, so it exercises the module-graph copy
+      # and `go work sync` steps that the others would not. The Dockerfile is
+      # parameterised by SERVICE, so the rest differ by one build-arg.
+      #
+      # This job exists because an unbuilt Dockerfile rots: the first real
+      # build of this one caught a wrong port variable and a missing-go.sum
+      # failure, neither of which review had spotted.
+      - name: Build the api image
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: infra/docker/Dockerfile
+          build-args: |
+            SERVICE=api
+            VERSION=${{ github.sha }}
+            COMMIT=${{ github.sha }}
+          tags: halyard-api-ci
+          push: false
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      # A built image that will not start is not a deployable image. The
+      # service must exit non-zero with its own config-validation message, not
+      # crash — which is what proves the binary and the config binder both work
+      # inside the runtime stage.
+      - name: The image starts and validates its configuration
+        run: |
+          set +e
+          out="$(docker run --rm -e HALYARD_ENV=development halyard-api-ci 2>&1)"
+          code=$?
+          set -e
+          echo "$out"
+          test "$code" -ne 0 || { echo "expected a non-zero exit with no DATABASE_URL"; exit 1; }
+          grep -q "DATABASE_URL: is required" <<<"$out" || {
+            echo "expected the chassis config validation to name DATABASE_URL"; exit 1; }
+
   schema:
     name: schema drift
     runs-on: ubuntu-latest
@@ -215,7 +258,7 @@ jobs:
   ci:
     name: ci
     if: always()
-    needs: [meta, go, python, js, schema, integration]
+    needs: [meta, go, python, js, schema, image, integration]
     runs-on: ubuntu-latest
     steps:
       # A single required status check for branch protection: adding a job above

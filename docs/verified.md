@@ -11,9 +11,9 @@ Status values: `unverified` · `verified` · `contradicted` · `blocked`
 | #   | Fact to verify                                                                                                     | Status     | Checked    | Finding                                                                                                                                                                                                                                                                                                                            |
 | --- | ------------------------------------------------------------------------------------------------------------------ | ---------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | `@opennextjs/cloudflare` - Next.js version support, unsupported features, ISR/caching                              | verified   | 2026-09-11 | Pin `next` **16.3.4** exactly and `@opennextjs/cloudflare` **1.20.6**. **Next 15 fails the build gate on 2026-10-21**; a missing major (17) fails too, so never `^16`. Console needs no cache bindings. Long-lived SSE is killed by weekly runtime updates - `Last-Event-ID` is load-bearing.                                      |
-| 2   | Cloudflare Containers - memory/CPU limits, max request duration, long-lived SSE, pricing                           | unverified | -          | Blocks SPEC §21 decision 1                                                                                                                                                                                                                                                                                                         |
+| 2   | Cloudflare Containers - memory/CPU limits, max request duration, long-lived SSE, pricing                           | verified   | 2026-09-11 | **Points away from Containers for the streaming services.** A container is fronted by a Durable Object, and Cloudflare documents that a streamed `fetch()` body does **not** keep a DO alive. Per-instance connection limits are unpublished. Decides §21.1 - see the brief in `docs/open-questions.md`.                           |
 | 3   | Cloudflare for SaaS - custom hostname limits per zone, TLS issuance latency, apex support                          | unverified | -          | Blocks task 3.6                                                                                                                                                                                                                                                                                                                    |
-| 4   | Cloudflare Hyperdrive - supported Postgres providers, connection limits, latency                                   | unverified | -          | Blocks tasks 0.12, 3.9                                                                                                                                                                                                                                                                                                             |
+| 4   | Cloudflare Hyperdrive - supported Postgres providers, connection limits, latency                                   | verified   | 2026-09-11 | **Not needed by 0.12** - it is a Workers binding and the console never touches Postgres (§7.1). Blocks tasks 3.9, 3.12. 0.6's `set_config(..., true)` RLS pattern **survives**. Caching is default-on with an undocumented key: use `--caching-disabled` for any multi-tenant database.                                            |
 | 5   | Modal - Sandbox API, snapshot semantics, tunnel URL stability, volume perf, concurrency limits, non-Python client  | verified   | 2026-09-11 | Python `1.5.5` (wheel read). **No resume primitive**; resume is snapshot-and-recreate with a new id. Tunnel URLs are **not** stable. Deny-by-default egress **exists** (TLS/443 SNI only). A Go SDK now exists - §5.1's premise is false. Latency unmeasured: 1.x needs a benchmark.                                               |
 | 6   | `opencode` - server API, config schema, MCP transport, plugin/hook surface; whether P1/P2/P3/P5 still need patches | verified   | 2026-09-11 | Pinned at `v1.18.30` (`3104c1428e`). **All six §11.2 patches have an upstream mechanism**; `agent/patches/` stays empty. P3 needs **two** env vars, one undocumented; repo `.opencode/plugin/` is RCE (§11.3 gap); `tokens.input` is cache-adjusted (§19 gap). Read, not run - tasks 1.7/1.8 must assert against a running server. |
 | 7   | Neon - project/branch creation API, branch limits, autoscaling, pricing at thousands of projects                   | unverified | -          | Blocks SPEC §21 decision 3, task 5.4                                                                                                                                                                                                                                                                                               |
@@ -254,6 +254,240 @@ Cloudflare says does **not** apply while a client is still receiving a streamed 
 is prose, not a measurement). **Task 0.12 should hold one stream open past 60s against a real
 deployment.** Until then the browser-to-Go-gateway path, which does not depend on it at all, is
 the one to prefer.
+
+## SPEC §22 item 2 — Cloudflare Containers
+
+Verified 2026-09-11 for task 0.12, because SPEC §21 decision 1 depends on it.
+Read from Cloudflare's current documentation, from the published
+`@cloudflare/containers@0.3.7` tarball, and from the full Containers docs corpus
+(`containers/llms-full.txt`, 287 KB, fetched whole) — that last one matters,
+because two of the findings below are **absences**.
+
+**Cloudflare Containers is GA**, since 2026-04-13, Workers Paid only. Maturity
+is not the objection, and any argument from "it's beta" is out of date.
+
+### The finding that decides §21 decision 1
+
+A container is fronted by a **Durable Object**: `@cloudflare/containers`'
+`Container` class extends `DurableObject`, one DO instance owns one container
+instance, and every request goes Worker → DO → container. So every Durable
+Object limit is a Containers limit.
+
+Cloudflare's Durable Objects documentation says, verbatim:
+
+> "This applies to outbound TCP sockets and outbound WebSockets... **It does not
+> apply to plain `fetch()` subrequests. Those never keep the Durable Object
+> alive, even while the response body is still streaming.**"
+
+And `@cloudflare/containers@0.3.7` proxies a response as exactly that
+(`dist/lib/container.js:953-960`):
+
+```js
+const res = await tcpPort.fetch(containerUrl, request)
+if (res.body !== null) {
+  const { readable, writable } = new IdentityTransformStream()
+  res.body?.pipeTo(writable).finally(() => {
+    this.decrementInflight()
+  })
+  return new Response(readable, res)
+}
+```
+
+The `fetch` has already resolved and the handler has already returned while
+bytes are still flowing. **A long-lived SSE stream proxied through a Cloudflare
+Container is not documented to survive**, and SPEC §5.1 has `api` and `gitd`
+holding thousands of them.
+
+Marked as an inference of exactly one step: both halves are confirmed from
+primary artifacts, but Cloudflare never writes the sentence "SSE through a
+container will be cut."
+
+It compounds. The SDK's keep-alive accounting is in-memory DO state
+(`private inflightRequests`), and Cloudflare says in-memory state is discarded
+on hibernation — so the stream breaks **and** the container may then be reaped
+as idle.
+
+**The obvious workaround is already closed.** Switching §3.1's transport to
+WebSockets does not rescue this: the SDK calls `server.accept()`, not the
+hibernation API, an outbound connection keeps a DO alive "for a maximum of 15
+minutes", and "code updates disconnect all WebSockets". That trades an
+undocumented ceiling for a documented 15-minute one, and bills for the whole
+connection.
+
+### The second finding is an absence, and it is decisive on its own
+
+SPEC §3.5 offers Containers "**if** its current limits on memory, request
+duration, persistent connections and long-lived SSE suit us."
+
+- The Containers docs mention SSE **zero times**.
+- **No per-instance concurrent-connection number is published anywhere.**
+- The only bound on record: "A single instance of a Durable Object cannot do
+  more work than is possible on a single thread", with four overload errors and
+  **no threshold given for any of them**.
+
+That condition cannot be evaluated from documentation, and working agreement 2
+says an unverified row is not permission to proceed. Cloud Run, by contrast,
+publishes 1,000 concurrent requests per instance and a 60-minute ceiling. **A
+known bad number beats an unknown**, which is precisely the "more moving parts,
+fewer unknowns" trade §3.5 already wrote down.
+
+### Third: `gitd` wants things Containers does not have
+
+- **All disk is ephemeral**, max 20 GB, lost on every sleep or restart.
+  Snapshots are "coming soon". The documented persistence path is FUSE-over-R2
+  with an explicit "should not expect native SSD-like performance".
+- **Request bodies are capped by the Cloudflare account plan** — 100 MB on
+  Free/Pro — because every container request passes through a Worker. A first
+  `git push` of a large repo returns **413 before `gitd` sees a byte**.
+- **No raw TCP ingress**: "end-users cannot make non-HTTP TCP or UDP requests to
+  a Container instance."
+- **No min-instances and no autoscaling.** `max_instances` is a ceiling only;
+  the load balancer is a random pick over N fixed DO names.
+
+### What does not decide it
+
+- **Cost.** Six always-on services: Containers ≈ $68/mo (including ~$25 of
+  Durable Object duration), Fly ≈ $36/mo, Railway ≈ $54/mo + $20 plan, Cloud Run
+  ≈ $171/mo. Every one is rounding error beside the ~$174/mo per continuously
+  running Modal sandbox in §22 item 5. Anyone reaching for cost here is reaching
+  for the wrong lever.
+- **Recycling.** Containers recycles on host restarts and the DO leg inherits
+  the Workers runtime cycle — but Cloudflare is actually **kinder than Fly on
+  deploys**: SIGTERM, up to 15 minutes to drain, then SIGKILL, against Fly's
+  `kill_timeout` default of 5 seconds. `Last-Event-ID` resume is required on all
+  four hosts, so it discriminates between none of them.
+- **Data residency.** Here Cloudflare is the **best** of the four:
+  `constraints.jurisdiction = "eu"` is a real shipped field. Worth recording
+  because §22 item 5 found Modal stores snapshots in the US regardless.
+
+### The alternatives, on the same constraints
+
+|                           | SSE / duration ceiling                                        | Concurrency        | Disk                     | Egress       | ~6 services always-on |
+| ------------------------- | ------------------------------------------------------------- | ------------------ | ------------------------ | ------------ | --------------------- |
+| **Cloudflare Containers** | undocumented; the DO does not stay alive for a streamed body  | **unpublished**    | ephemeral, 20 GB         | included     | ~$68/mo               |
+| **Fly.io**                | none documented — and **no timeout figures published at all** | not published      | real volumes $0.15/GB/mo | $0.02/GB     | **~$36/mo**           |
+| **Railway**               | none published                                                | not published      | volumes $0.15/GB/mo      | **$0.05/GB** | ~$54/mo + $20         |
+| **Cloud Run**             | **60 min hard** (5 min default)                               | **1,000/instance** | ephemeral + GCS FUSE     | GCP rates    | ~$171/mo              |
+
+### What would have to be true for Containers to win
+
+1. **The measurement contradicts the first finding.** Deploy one `lite`
+   instance, hold SSE open for an hour, see whether it survives. This is cheap —
+   one Workers Paid account, no new vendor — and it is the _only_ thing that
+   would change the answer. If the small vendor surface is wanted, make §21.1
+   **conditional on that experiment** rather than deciding on prose either way.
+2. **The architecture changes so containers never hold the streams** —
+   terminate SSE in a Durable Object using the hibernation API, with the Go
+   services doing request/response behind it. That is Cloudflare's intended
+   shape and it works, but it contradicts §5.1's premise, reopens §5.4, and is a
+   redesign rather than a host choice. Named here so it is a visible option
+   rather than something smuggled in later.
+3. **`gitd` moves off the container host entirely.** That neutralises the third
+   finding but neither of the first two.
+
+### What this does not establish
+
+No Cloudflare account was used and nothing was deployed. The central claim is a
+one-step inference from two confirmed artifacts, and **the experiment in (1) is
+the only thing that settles it**. `@cloudflare/containers` is also at 0.3.7,
+published 2026-06-04 — pre-1.0, and three months without a release for a GA
+product.
+
+## SPEC §22 item 4 — Cloudflare Hyperdrive
+
+Verified 2026-09-11 for task 0.12, from Cloudflare's current documentation
+(including the raw `index.md` sources where the rendered page was ambiguous),
+the published limits and pricing tables, the `wrangler hyperdrive` command
+reference, and Cloudflare's own benchmark post.
+
+### The headline: task 0.12 does not need Hyperdrive, and the checklist row was wrong
+
+Hyperdrive is a **Workers binding**. The only Worker in 0.12 is the console, and
+the console never touches Postgres — SPEC §7.1 puts every read and write behind
+the Go `api` service, and the repository bears that out: there is no Postgres
+client anywhere in `apps/console`. The Go services reach Postgres over pgx from
+a container, where a Workers-only binding is unreachable by construction.
+
+So the row's "Blocks tasks 0.12, 3.9" was wrong about 0.12. **Corrected to
+"Blocks tasks 3.9, 3.12"** — the generated user apps on Workers, which is
+exactly where `docs/TASKS.md` already files it.
+
+Task 0.12 therefore provisions **no** Hyperdrive configuration and adds **no**
+`hyperdrive` block to `apps/console/wrangler.jsonc`. A Worker holding the
+control-plane database credential would invert §17.
+
+### The good news, because it removes a real worry
+
+**Task 0.6's row-level security pattern survives Hyperdrive.** Hyperdrive is a
+transaction-mode pooler that pins one origin connection for a transaction's full
+duration and RESETs it on return, so
+
+```sql
+set_config('app.org_id', $1, true)   -- is_local = true
+```
+
+followed by the query **inside the same pgx transaction** is exactly the
+pooler-safe form. Tenant scoping does not need redesigning for it.
+
+Marked `likely` rather than `confirmed` on purpose: Cloudflare documents the
+pooling contract but never names RLS, `set_config` or session GUCs, and nothing
+was measured. **Task 3.9 must pin it with an integration test** — set
+`app.org_id` for org A in one transaction through a real binding, then assert a
+following transaction scoped to org B sees none of A's rows. An assertion, not a
+comment.
+
+Hyperdrive is also **free on both Workers plans**, with no per-query, per-GB or
+egress charge, so it adds no line to §19's margin model.
+
+### The one genuine danger, for whoever does 3.9 and 3.12
+
+**Query caching is default-on** — 60s `max_age`, 15s `stale_while_revalidate` —
+Cloudflare states plainly that it does not invalidate on write, and **what the
+cache key is composed of is nowhere documented**, including whether a session
+GUC set by `set_config` participates in it.
+
+If the key ignored `app.org_id`, a parameterised tenant-scoped `SELECT` cached
+for org A would be served to org B: a **silent cross-tenant read**, the exact
+failure §6 and §17 exist to prevent, and one no application test would catch
+because the rows come back looking valid.
+
+**Fail closed.** Any Hyperdrive config fronting a database that carries more
+than one tenant's rows must be created `--caching-disabled`. Do not resolve this
+by reasoning about what the key probably contains.
+
+### The rest of what 3.9 and 3.12 will need, established now
+
+- **Point at the DIRECT endpoint, never a `-pooler` host.** Cloudflare's own Neon
+  guide says to uncheck connection pooling — Hyperdrive is itself the pooler.
+- **Declare the binding under every named environment separately.** Bindings are
+  not inherited, and the failure mode is staging writing to production. (The same
+  rule the console's `wrangler.jsonc` comments about `vars`.)
+- **Share one config across projects.** The per-account cap is **25** on Paid, so
+  one config per generated project is exhausted almost immediately; per-project
+  isolation must come from credentials or schema instead.
+- **Test a write-then-immediately-read against a deployed Worker.** `wrangler
+dev` bypasses Hyperdrive entirely, so the stale-read window cannot appear
+  locally or in a unit test — it first appears in staging as an intermittent "my
+  change didn't save".
+
+### A throughput trade worth recording
+
+Cloudflare explicitly recommends **against** wrapping queries in transactions on
+Hyperdrive, and Halyard's `Scope` does so unconditionally, because §6's isolation
+requires it. So every tenant read pins one of ~100 connections for its full
+duration and most of Hyperdrive's multiplexing advantage is forfeited.
+
+That is a throughput fact, not a correctness one, and the trade is not
+negotiable in that direction. It is also a second, independent reason the
+**control-plane** database stays behind Go `api` with a long-lived pgx pool
+rather than behind a Worker. Note for 3.12: the generated-app template should
+not adopt per-query transactions unless its own design needs them.
+
+### What this does not establish
+
+No Cloudflare account was used; no query, deployment or API call was made.
+Nothing about cache-key composition, Postgres 18 compatibility, or same-region
+latency is measured.
 
 ## SPEC §22 item 5 — Modal
 

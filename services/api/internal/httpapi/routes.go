@@ -87,10 +87,12 @@ func (a *API) Setup(ctx context.Context, rt *chassis.Runtime) (io.Closer, error)
 	dbCfg.URL = cfg.DatabaseURL
 	dbCfg.ApplicationName = rt.Config.Service
 	// StatementCacheMode stays at "prepared" until §21 decision 1 settles the
-	// container host: behind a transaction-mode pooler (PgBouncer, Hyperdrive)
-	// prepared statements break intermittently, and picking the safe-but-slower
-	// mode before knowing whether a pooler is in the path would be guessing in
-	// the expensive direction. docs/verified.md records the constraint.
+	// container host: behind a transaction-mode pooler (PgBouncer, or whatever
+	// the host provides) prepared statements break intermittently, and picking
+	// the safe-but-slower mode before knowing whether a pooler is in the path
+	// would be guessing in the expensive direction. docs/verified.md records
+	// the constraint. Hyperdrive is not a candidate here — it is a Workers
+	// binding and this pool lives in a container (§22 item 4).
 
 	open := a.Open
 	if open == nil {

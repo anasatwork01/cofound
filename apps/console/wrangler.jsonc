@@ -28,4 +28,40 @@
   "observability": {
     "enabled": true,
   },
+
+  // --- environments -------------------------------------------------------
+  //
+  // Named environments, because task 0.12 needs staging and production to be
+  // separately deployable. Two things about wrangler environments are easy to
+  // get wrong and both are load-bearing here:
+  //
+  //   1. The top-level config above is the DEFAULT environment, so deploying
+  //      without `--env` publishes to a worker named `halyard-console` that is
+  //      neither staging nor production. Every deploy in
+  //      .github/workflows/deploy-console.yml passes `--env` explicitly.
+  //   2. Bindings are NOT inherited by named environments. `vars`, secrets, KV,
+  //      R2 and Hyperdrive bindings must be repeated per environment, and the
+  //      failure mode of forgetting is staging writing to production.
+  //      `compatibility_date`, `compatibility_flags`, `main` and `assets` ARE
+  //      inherited, which is why they are not repeated below.
+  //
+  // No Hyperdrive binding, deliberately. The console never touches Postgres --
+  // SPEC 7.1 puts every read and write behind the Go `api` service, and a
+  // Worker holding the control-plane database credential would invert 17.
+  // Hyperdrive belongs to the generated user apps (tasks 3.9/3.12). See
+  // docs/verified.md 22 item 4.
+  "env": {
+    "staging": {
+      "name": "halyard-console-staging",
+      "vars": {
+        "HALYARD_ENV": "staging",
+      },
+    },
+    "production": {
+      "name": "halyard-console-production",
+      "vars": {
+        "HALYARD_ENV": "production",
+      },
+    },
+  },
 }
