@@ -277,8 +277,10 @@ export interface paths {
         /**
          * @description SPEC 7.1 takes either a template version or a prompt, never both: with a
          *     prompt the agent selects the template itself. SLO is p50 < 10s to first
-         *     preview (SPEC 17.3), which is why this returns as soon as the project
-         *     and branch rows exist rather than waiting for a sandbox.
+         *     preview (SPEC 17.3 — provisional until task 1.19 measures Modal's
+         *     snapshot and restore latency, which is unpublished), which is why this
+         *     returns as soon as the project and branch rows exist rather than waiting
+         *     for a sandbox.
          */
         post: operations["createProject"];
         delete?: never;
@@ -538,7 +540,7 @@ export interface components {
         TemplateVersion: {
             id: components["schemas"]["Uuid"];
             version: string;
-            /** @description Whether the pre-baked sandbox image exists. Without it, project creation misses the p50 < 10s SLO (SPEC 9, 17.3). */
+            /** @description Whether the pre-baked sandbox image exists. Without it, project creation misses the p50 < 10s SLO (SPEC 9, 17.3) - necessary but not sufficient, since the Modal snapshot/restore half of that budget is unmeasured until task 1.19. */
             image_ready: boolean;
         };
         /** @description Exactly one of `template_version_id` or `prompt` (SPEC 7.1). */

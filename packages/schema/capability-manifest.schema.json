@@ -174,7 +174,7 @@
           "relay_path": {
             "type": "string",
             "pattern": "^/relay/\\{project\\}/[a-z][a-z0-9_]*$",
-            "description": "SPEC 13.3: third-party webhooks cannot target a sandbox tunnel whose URL changes each session, so they hit a stable relay that forwards to whichever preview is live and queues with replay when none is."
+            "description": "SPEC 13.3: third-party webhooks cannot target a sandbox tunnel, whose URL changes on every create and every restore - Modal assigns a random hostname and offers no way to pin one - so they hit a stable relay that forwards to whichever preview is live and queues with replay when none is."
           },
           "events": {
             "type": "array",

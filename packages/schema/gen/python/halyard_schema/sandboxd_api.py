@@ -137,7 +137,13 @@ class SessionQuotas(BaseModel):
     wall_clock_seconds_per_turn: Annotated[int | None, Field(ge=1)] = 600
     tokens_per_turn: Annotated[int | None, Field(ge=1)] = 400000
     tokens_per_session: Annotated[int | None, Field(ge=1)] = 4000000
-    vcpu: Annotated[float | None, Field(ge=0.1)] = 2
+    vcpu: Annotated[
+        float | None,
+        Field(
+            description='vCPU, as SPEC 9 states it. Modal\'s `cpu=` takes PHYSICAL CORES,\nwhich its pricing page labels "2 vCPU equivalent" — so pass\n`cpu=(vcpu/2, vcpu/2)`. Passing this scalar straight through\nprovisions twice the CPU and raises spend ~1.6x, and a bare scalar\nis only a request that permits billed bursting to request + 16\ncores; the tuple is the hard cap this quota claims to be.\n',
+            ge=0.1,
+        ),
+    ] = 2
     memory_mb: Annotated[int | None, Field(ge=256)] = 4096
 
 
@@ -160,13 +166,16 @@ class Session(BaseModel):
     )
     session_id: Uuid
     sandbox_id: Annotated[
-        str | None, Field(description="Modal's identifier. Opaque to the control plane.")
+        str | None,
+        Field(
+            description="Modal's identifier for the CURRENT incarnation, and disposable.\nSnapshot-and-recreate yields a new id, so never treat this as\nproject identity — key everything on project_id. Worth storing only\nbecause Sandbox.from_id() reattaches from any sandboxd replica; and\nbecause V2 sandboxes are not returned by Sandbox.list(), orphan\nreconciliation must use stored ids rather than enumeration.\n"
+        ),
     ] = None
     state: SessionState
     tunnel_url: Annotated[
         AnyUrl | None,
         Field(
-            description="Registered against <branch>.<project>.preview.<domain> in Workers KV\n(SPEC 9 step 5). Null until the dev server is listening. Never\nhanded to a browser unsigned — SPEC 14.3 gates preview URLs behind\na signed cookie, because an unlisted URL is not access control.\n"
+            description="Registered against <branch>.<project>.preview.<domain> in Workers KV\n(SPEC 9 step 5). Null until the dev server is listening.\n\nNOT STABLE: Modal assigns a random hostname with no way to pin one,\nso this changes on every create and every restore. Re-read it after\na restore and invalidate the previous KV entry; it is never a\nproject-stable address.\n\nReachable only from Halyard's proxy via inbound_cidr_allowlist — a\nModal tunnel is public by default and is a raw TLS stream that does\nno L7 processing, so it adds no X-Forwarded-For. Never handed to a\nbrowser unsigned: SPEC 14.3 gates preview URLs behind a signed\ncookie, because an unlisted URL is not access control.\n"
         ),
     ] = None
     warm: Annotated[

@@ -229,10 +229,35 @@ class TokenUsage(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    in_: Annotated[int, Field(alias="in", ge=0)]
-    out: Annotated[int, Field(ge=0)]
-    cache_read: Annotated[int, Field(ge=0)]
-    cache_write: Annotated[int, Field(ge=0)]
+    in_: Annotated[
+        int,
+        Field(
+            alias="in",
+            description="The agent's already cache-adjusted input count, NOT the provider's raw input. Upstream computes it as inputTokens - cacheRead - cacheWrite, so total billable input is in + cache_read + cache_write. Putting the provider's raw count here double-counts the cache fields.",
+            ge=0,
+        ),
+    ]
+    out: Annotated[
+        int,
+        Field(
+            description="Output PLUS reasoning. Upstream's output field already excludes reasoning tokens, and SPEC 16.2 mandates four meters with no fifth, so reasoning is folded in here. Emitting upstream's output verbatim never bills reasoning at all.",
+            ge=0,
+        ),
+    ]
+    cache_read: Annotated[
+        int,
+        Field(
+            description="Cache-read input tokens, counted separately because they are roughly an order of magnitude cheaper. Billable, and on a cached agent loop usually the majority of input.",
+            ge=0,
+        ),
+    ]
+    cache_write: Annotated[
+        int,
+        Field(
+            description="Cache-write input tokens. Billable, and normalised upstream across providers that report it only in metadata.",
+            ge=0,
+        ),
+    ]
 
 
 class UsageTick(BaseModel):
@@ -243,7 +268,7 @@ class UsageTick(BaseModel):
     tokens: Annotated[
         TokenUsage,
         Field(
-            description="Four separate counts, never one total. SPEC 16.2: they differ by roughly an order of magnitude in cost, and a combined meter misprices heavy sessions.",
+            description="Four separate counts, never one total. SPEC 16.2: they differ by roughly an order of magnitude in cost, and a combined meter misprices heavy sessions. The upstream agent reports FIVE fields and two of them are already net of something, so each field below states exactly what it receives - the obvious mapping under-bills. See docs/verified.md, SPEC 22 item 6, 'The metering trap'.",
             title="TokenUsage",
         ),
     ]

@@ -1051,7 +1051,10 @@ type UsageTick struct {
 	SandboxSeconds float64 `json:"sandbox_seconds" yaml:"sandbox_seconds" mapstructure:"sandbox_seconds"`
 
 	// Four separate counts, never one total. SPEC 16.2: they differ by roughly an
-	// order of magnitude in cost, and a combined meter misprices heavy sessions.
+	// order of magnitude in cost, and a combined meter misprices heavy sessions. The
+	// upstream agent reports FIVE fields and two of them are already net of
+	// something, so each field below states exactly what it receives - the obvious
+	// mapping under-bills. See docs/verified.md, SPEC 22 item 6, 'The metering trap'.
 	Tokens UsageTickTokens `json:"tokens" yaml:"tokens" mapstructure:"tokens"`
 
 	// SPEC 7.2: every event carries the turn it belongs to.
@@ -1062,18 +1065,30 @@ type UsageTick struct {
 }
 
 // Four separate counts, never one total. SPEC 16.2: they differ by roughly an
-// order of magnitude in cost, and a combined meter misprices heavy sessions.
+// order of magnitude in cost, and a combined meter misprices heavy sessions. The
+// upstream agent reports FIVE fields and two of them are already net of something,
+// so each field below states exactly what it receives - the obvious mapping
+// under-bills. See docs/verified.md, SPEC 22 item 6, 'The metering trap'.
 type UsageTickTokens struct {
-	// CacheRead corresponds to the JSON schema field "cache_read".
+	// Cache-read input tokens, counted separately because they are roughly an order
+	// of magnitude cheaper. Billable, and on a cached agent loop usually the majority
+	// of input.
 	CacheRead int `json:"cache_read" yaml:"cache_read" mapstructure:"cache_read"`
 
-	// CacheWrite corresponds to the JSON schema field "cache_write".
+	// Cache-write input tokens. Billable, and normalised upstream across providers
+	// that report it only in metadata.
 	CacheWrite int `json:"cache_write" yaml:"cache_write" mapstructure:"cache_write"`
 
-	// In corresponds to the JSON schema field "in".
+	// The agent's already cache-adjusted input count, NOT the provider's raw input.
+	// Upstream computes it as inputTokens - cacheRead - cacheWrite, so total billable
+	// input is in + cache_read + cache_write. Putting the provider's raw count here
+	// double-counts the cache fields.
 	In int `json:"in" yaml:"in" mapstructure:"in"`
 
-	// Out corresponds to the JSON schema field "out".
+	// Output PLUS reasoning. Upstream's output field already excludes reasoning
+	// tokens, and SPEC 16.2 mandates four meters with no fifth, so reasoning is
+	// folded in here. Emitting upstream's output verbatim never bills reasoning at
+	// all.
 	Out int `json:"out" yaml:"out" mapstructure:"out"`
 }
 

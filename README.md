@@ -34,24 +34,24 @@ the PR body — are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Layout
 
-| Path                 | What                                                                        |
-| -------------------- | --------------------------------------------------------------------------- |
-| `apps/console/`      | Next.js SaaS frontend (Cloudflare Workers via OpenNext)                     |
-| `services/api/`      | Go - REST API, auth, SSE gateway, approval gates                            |
-| `services/gitd/`     | Go - git HTTP proxy, pre-receive policy, tree/blob/diff API                 |
-| `services/aigw/`     | Go - AI gateway: provider proxy, token metering, spend caps                 |
-| `services/mcp/`      | Go - MCP tool servers exposed to the sandbox                                |
-| `services/sandboxd/` | Python - Modal sandbox lifecycle, warm pool, tunnels                        |
-| `services/workers/`  | Python - ads sync, SEO crawl, rating, reconciliation, GitHub sync           |
-| `agent/opencode/`    | git submodule, pinned tag                                                   |
-| `agent/patches/`     | our opencode patch set, applied in CI                                       |
-| `agent/agentd/`      | Go - in-sandbox supervisor sidecar                                          |
-| `packages/chassis/`  | Go - shared service chassis: config, logging, tracing, health, HTTP, errors |
-| `capabilities/`      | capability modules (auth, payments, email, uploads)                         |
-| `templates/`         | app templates, each a git repo                                              |
-| `packages/schema/`   | **JSON Schema + OpenAPI: single source of truth for all types**             |
-| `db/migrations/`     | control plane migrations (goose, forward-only)                              |
-| `infra/`             | Cloudflare and Modal configuration                                          |
+| Path                 | What                                                                             |
+| -------------------- | -------------------------------------------------------------------------------- |
+| `apps/console/`      | Next.js SaaS frontend (Cloudflare Workers via OpenNext)                          |
+| `services/api/`      | Go - REST API, auth, SSE gateway, approval gates                                 |
+| `services/gitd/`     | Go - git HTTP proxy, pre-receive policy, tree/blob/diff API                      |
+| `services/aigw/`     | Go - AI gateway: provider proxy, token metering, spend caps                      |
+| `services/mcp/`      | Go - MCP tool servers exposed to the sandbox                                     |
+| `services/sandboxd/` | Python - Modal sandbox lifecycle, warm pool, tunnels                             |
+| `services/workers/`  | Python - ads sync, SEO crawl, rating, reconciliation, GitHub sync                |
+| `agent/opencode/`    | git submodule, pinned tag                                                        |
+| `agent/patches/`     | empty by design - task 1.1 found an upstream mechanism for all six §11.2 patches |
+| `agent/agentd/`      | Go - in-sandbox supervisor sidecar                                               |
+| `packages/chassis/`  | Go - shared service chassis: config, logging, tracing, health, HTTP, errors      |
+| `capabilities/`      | capability modules (auth, payments, email, uploads)                              |
+| `templates/`         | app templates, each a git repo                                                   |
+| `packages/schema/`   | **JSON Schema + OpenAPI: single source of truth for all types**                  |
+| `db/migrations/`     | control plane migrations (goose, forward-only)                                   |
+| `infra/`             | Cloudflare and Modal configuration                                               |
 
 ## The one rule that shapes everything
 
