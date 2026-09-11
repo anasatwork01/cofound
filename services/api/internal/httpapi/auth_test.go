@@ -14,6 +14,7 @@ import (
 	"github.com/anasatwork01/cofound/packages/chassis"
 	"github.com/anasatwork01/cofound/packages/chassis/config"
 	"github.com/anasatwork01/cofound/packages/chassis/logging"
+	"github.com/anasatwork01/cofound/packages/db"
 	"github.com/anasatwork01/cofound/packages/schema/gen/go/apiv1"
 	"github.com/anasatwork01/cofound/packages/schema/gen/go/common"
 	"github.com/anasatwork01/cofound/services/api/internal/auth"
@@ -162,6 +163,60 @@ func (h *authHarness) post(t *testing.T, path string, body any) (*http.Response,
 	req.Header.Set("Content-Type", "application/json")
 	return h.do(t, req)
 }
+
+// postWith is post with extra headers, for the org selector.
+func (h *authHarness) postWith(t *testing.T, path string, headers map[string]string, body any) (*http.Response, string) {
+	t.Helper()
+	b, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := http.NewRequest(http.MethodPost, h.base+path, strings.NewReader(string(b)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	return h.do(t, req)
+}
+
+// reqWith is req with extra headers.
+func (h *authHarness) reqWith(t *testing.T, method, path string, headers map[string]string) (*http.Response, string) {
+	t.Helper()
+	req, err := http.NewRequest(method, h.base+path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	return h.do(t, req)
+}
+
+// ownerPool connects as the MIGRATION role, which bypasses row-level security.
+//
+// Only for reading back what a test wrote, where the assertion is about what
+// exists rather than about who can see it. Never for exercising a code path.
+func ownerPool(t *testing.T) *db.Pool {
+	t.Helper()
+	url := os.Getenv("DATABASE_URL")
+	if url == "" {
+		t.Skip("DATABASE_URL unset")
+	}
+	cfg := db.Defaults()
+	cfg.URL = url
+	cfg.AllowPrivilegedRole = true
+	p, err := db.Open(t.Context(), cfg)
+	if err != nil {
+		t.Fatalf("open owner pool: %v", err)
+	}
+	t.Cleanup(p.Close)
+	return p
+}
+
+func contains(h, n string) bool { return strings.Contains(h, n) }
 
 func (h *authHarness) req(t *testing.T, method, path string) (*http.Response, string) {
 	t.Helper()

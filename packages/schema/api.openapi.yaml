@@ -244,6 +244,84 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/Invalid" }
 
+  # Four paths SPEC 7.1 does not list, each required by something it or SPEC 8
+  # does. Recorded here rather than implemented quietly, because an endpoint
+  # that exists and is not in the contract is an endpoint no generated client
+  # can reach.
+  /orgs/{org}/members/{user}:
+    parameters:
+      - { $ref: "#/components/parameters/Org" }
+      - name: user
+        in: path
+        required: true
+        x-go-name: MemberUserIdParam
+        schema: { $ref: "./common.schema.json#/components/schemas/Uuid" }
+    patch:
+      operationId: changeMemberRole
+      tags: [orgs]
+      description: |
+        SPEC 8 audits "role change", which requires it to be possible. Requires
+        `admin`; only an `owner` may grant or revoke ownership, or an admin
+        could manufacture someone able to do the two things 8 reserves.
+
+        Refuses to demote the last owner: an org with no owner has nobody who
+        can bill, delete or transfer it.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [role]
+              properties:
+                role: { $ref: "./common.schema.json#/components/schemas/Role" }
+      responses:
+        "204": { description: Changed, or already that role. }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      operationId: removeOrgMember
+      tags: [orgs]
+      description: |
+        SPEC 8 audits "member removal". Requires `admin`; only an `owner` may
+        remove an owner, and the last owner cannot be removed at all.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      responses:
+        "204": { description: Removed. }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /invites/accept:
+    post:
+      operationId: acceptInvite
+      tags: [orgs]
+      description: |
+        Redeems an invitation token. SPEC 8 requires invitations, and an
+        invitation nobody can accept is not one.
+
+        Authenticated but NOT org-scoped: the invitee is not a member yet, which
+        is the whole point, so the token is the authorisation. Single-use, and
+        unknown, spent, revoked and expired are one answer so the endpoint
+        cannot be used to learn which a captured token was.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties:
+                token: { type: string, minLength: 43, maxLength: 43 }
+      responses:
+        "204": { description: Joined. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
   /templates:
     get:
       operationId: listTemplates
@@ -261,6 +339,30 @@ paths:
                 required: [templates]
 
   /projects:
+    parameters: [{ $ref: "#/components/parameters/OrgContext" }]
+    get:
+      operationId: listProjects
+      tags: [projects]
+      description: |
+        Not in SPEC 7.1, which jumps from creating a project to fetching one by
+        slug. The console cannot render a project picker without it, and SPEC 8
+        puts org switching in that picker.
+
+        Archived projects are omitted. They remain reachable by slug, so the
+        console can still show one that was archived by mistake.
+      responses:
+        "200":
+          description: The org's projects.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [projects, page]
+                properties:
+                  projects: { type: array, items: { $ref: "#/components/schemas/Project" } }
+                  page: { $ref: "./common.schema.json#/components/schemas/Page" }
+        "403": { $ref: "#/components/responses/Forbidden" }
     post:
       operationId: createProject
       tags: [projects]
@@ -284,7 +386,9 @@ paths:
         "422": { $ref: "#/components/responses/Invalid" }
 
   /projects/{project}:
-    parameters: [{ $ref: "#/components/parameters/Project" }]
+    parameters:
+      - { $ref: "#/components/parameters/Project" }
+      - { $ref: "#/components/parameters/OrgContext" }
     get:
       operationId: getProject
       tags: [projects]
@@ -719,6 +823,12 @@ components:
 
     GitAuthority:
       title: GitAuthority
+      # `type` alongside `enum`, without which oapi-codegen emits
+      # `type GitAuthority = interface{}` — an untyped value for a
+      # two-member enum, which gives a Go client nothing to switch on and a
+      # TypeScript client no union. The enum alone is valid JSON Schema and
+      # useless as a generated type.
+      type: string
       enum: [internal, github]
       description: |
         SPEC 5.5: exactly one owner per project at all times. Once GitHub is

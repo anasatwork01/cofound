@@ -11,8 +11,10 @@ import (
 	"github.com/anasatwork01/cofound/packages/chassis/health"
 	"github.com/anasatwork01/cofound/packages/db"
 
+	"github.com/anasatwork01/cofound/services/api/internal/audit"
 	"github.com/anasatwork01/cofound/services/api/internal/auth"
 	"github.com/anasatwork01/cofound/services/api/internal/tenancy"
+	"github.com/anasatwork01/cofound/services/api/internal/v1"
 
 	apiconfig "github.com/anasatwork01/cofound/services/api/internal/config"
 )
@@ -32,6 +34,9 @@ type API struct {
 
 	// Tenancy resolves (user_id, org_id, role) for the authed subtree.
 	Tenancy *tenancy.Resolver
+
+	// V1 is the org and project surface.
+	V1 *v1.Handlers
 
 	// MailerFor overrides how magic links are delivered. Tests capture the link
 	// with it; production leaves it nil and gets the log-only mailer, because
@@ -144,6 +149,17 @@ func (a *API) Setup(ctx context.Context, rt *chassis.Runtime) (io.Closer, error)
 	// something to call would break working agreement 4.
 	a.Tenancy = &tenancy.Resolver{Pool: pool, Auth: a.Auth}
 	rt.Mux.Authed.Use(a.Tenancy.Authenticate)
+
+	// The /v1 surface. Every route declares its required role beside itself, so
+	// the permission a handler runs under is readable from one function rather
+	// than from the handler bodies.
+	a.V1 = &v1.Handlers{
+		Pool:      pool,
+		Tenancy:   a.Tenancy,
+		Audit:     audit.New(pool),
+		InviteTTL: v1.DefaultInviteTTL(),
+	}
+	a.V1.Mount(rt.Mux.Authed, rt.Errors)
 
 	// The streaming subtree exists and is empty. It has no handler timeout and
 	// no body cap, which is what makes it safe for SSE. Task 1.14 mounts

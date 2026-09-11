@@ -11,6 +11,24 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for GitAuthority.
+const (
+	Github   GitAuthority = "github"
+	Internal GitAuthority = "internal"
+)
+
+// Valid indicates whether the value is a known member of the GitAuthority enum.
+func (e GitAuthority) Valid() bool {
+	switch e {
+	case Github:
+		return true
+	case Internal:
+		return true
+	default:
+		return false
+	}
+}
+
 // AuthOrgMembership One org the signed-in user belongs to, and their role in it.
 type AuthOrgMembership struct {
 	Id   externalRef0.Uuid `json:"id"`
@@ -104,7 +122,7 @@ type CreateTurnRequest struct {
 // linked it becomes authoritative and the internal store is a cache plus
 // outbound queue. Dual authority on one branch is a split-brain bug
 // factory; do not build it.
-type GitAuthority = interface{}
+type GitAuthority string
 
 // Invite defines model for Invite.
 type Invite struct {
@@ -230,6 +248,9 @@ type IdempotencyKey = string
 // OrgSlugParam Lowercase, DNS-label safe: a project slug reaches a preview hostname (SPEC 9).
 type OrgSlugParam = externalRef0.Slug
 
+// OrgContextHeader Lowercase, DNS-label safe: a project slug reaches a preview hostname (SPEC 9).
+type OrgContextHeader = externalRef0.Slug
+
 // ProjectSlugParam Lowercase, DNS-label safe: a project slug reaches a preview hostname (SPEC 9).
 type ProjectSlugParam = externalRef0.Slug
 
@@ -276,6 +297,17 @@ type VerifyMagicLinkJSONBody struct {
 	Token string `json:"token"`
 }
 
+// AcceptInviteJSONBody defines parameters for AcceptInvite.
+type AcceptInviteJSONBody struct {
+	Token string `json:"token"`
+}
+
+// AcceptInviteParams defines parameters for AcceptInvite.
+type AcceptInviteParams struct {
+	// IdempotencyKey Replaying a key returns the original response instead of acting twice (SPEC 7.1, 17.2).
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
 // CreateOrgParams defines parameters for CreateOrg.
 type CreateOrgParams struct {
 	// IdempotencyKey Replaying a key returns the original response instead of acting twice (SPEC 7.1, 17.2).
@@ -288,16 +320,116 @@ type CreateInviteParams struct {
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
 
+// RemoveOrgMemberParams defines parameters for RemoveOrgMember.
+type RemoveOrgMemberParams struct {
+	// IdempotencyKey Replaying a key returns the original response instead of acting twice (SPEC 7.1, 17.2).
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// ChangeMemberRoleJSONBody defines parameters for ChangeMemberRole.
+type ChangeMemberRoleJSONBody struct {
+	// Role SPEC 8. Approving anything that spends money requires owner or admin.
+	Role externalRef0.Role `json:"role"`
+}
+
+// ChangeMemberRoleParams defines parameters for ChangeMemberRole.
+type ChangeMemberRoleParams struct {
+	// IdempotencyKey Replaying a key returns the original response instead of acting twice (SPEC 7.1, 17.2).
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// ListProjectsParams defines parameters for ListProjects.
+type ListProjectsParams struct {
+	// OrgContextHeader Which organisation the request is about, by slug.
+	//
+	// SPEC 7.1's project paths take a project SLUG, and SPEC 6 makes a project
+	// slug unique only WITHIN an org (`unique (org_id, slug)`). So
+	// `/v1/projects/{project}` is ambiguous for a user who belongs to two orgs
+	// that each have a project of that name — and 7.1 defines no way to say
+	// which, even though SPEC 8 requires "org switching in the project
+	// picker", which means the console has a current org to send.
+	//
+	// Optional, so single-org callers stay on the path 7.1 specifies. A
+	// request without it resolves across the caller's memberships and is
+	// refused with `ambiguous_project` (409) only if genuinely ambiguous —
+	// never served against a guess, because that would mean acting on the
+	// wrong tenant's project. It also selects the org for routes that name
+	// none, such as creating a project.
+	//
+	// See docs/open-questions.md Q6.
+	OrgContextHeader *OrgContextHeader `json:"X-Halyard-Org,omitempty"`
+}
+
 // CreateProjectParams defines parameters for CreateProject.
 type CreateProjectParams struct {
 	// IdempotencyKey Replaying a key returns the original response instead of acting twice (SPEC 7.1, 17.2).
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+
+	// OrgContextHeader Which organisation the request is about, by slug.
+	//
+	// SPEC 7.1's project paths take a project SLUG, and SPEC 6 makes a project
+	// slug unique only WITHIN an org (`unique (org_id, slug)`). So
+	// `/v1/projects/{project}` is ambiguous for a user who belongs to two orgs
+	// that each have a project of that name — and 7.1 defines no way to say
+	// which, even though SPEC 8 requires "org switching in the project
+	// picker", which means the console has a current org to send.
+	//
+	// Optional, so single-org callers stay on the path 7.1 specifies. A
+	// request without it resolves across the caller's memberships and is
+	// refused with `ambiguous_project` (409) only if genuinely ambiguous —
+	// never served against a guess, because that would mean acting on the
+	// wrong tenant's project. It also selects the org for routes that name
+	// none, such as creating a project.
+	//
+	// See docs/open-questions.md Q6.
+	OrgContextHeader *OrgContextHeader `json:"X-Halyard-Org,omitempty"`
 }
 
 // DeleteProjectParams defines parameters for DeleteProject.
 type DeleteProjectParams struct {
 	// IdempotencyKey Replaying a key returns the original response instead of acting twice (SPEC 7.1, 17.2).
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+
+	// OrgContextHeader Which organisation the request is about, by slug.
+	//
+	// SPEC 7.1's project paths take a project SLUG, and SPEC 6 makes a project
+	// slug unique only WITHIN an org (`unique (org_id, slug)`). So
+	// `/v1/projects/{project}` is ambiguous for a user who belongs to two orgs
+	// that each have a project of that name — and 7.1 defines no way to say
+	// which, even though SPEC 8 requires "org switching in the project
+	// picker", which means the console has a current org to send.
+	//
+	// Optional, so single-org callers stay on the path 7.1 specifies. A
+	// request without it resolves across the caller's memberships and is
+	// refused with `ambiguous_project` (409) only if genuinely ambiguous —
+	// never served against a guess, because that would mean acting on the
+	// wrong tenant's project. It also selects the org for routes that name
+	// none, such as creating a project.
+	//
+	// See docs/open-questions.md Q6.
+	OrgContextHeader *OrgContextHeader `json:"X-Halyard-Org,omitempty"`
+}
+
+// GetProjectParams defines parameters for GetProject.
+type GetProjectParams struct {
+	// OrgContextHeader Which organisation the request is about, by slug.
+	//
+	// SPEC 7.1's project paths take a project SLUG, and SPEC 6 makes a project
+	// slug unique only WITHIN an org (`unique (org_id, slug)`). So
+	// `/v1/projects/{project}` is ambiguous for a user who belongs to two orgs
+	// that each have a project of that name — and 7.1 defines no way to say
+	// which, even though SPEC 8 requires "org switching in the project
+	// picker", which means the console has a current org to send.
+	//
+	// Optional, so single-org callers stay on the path 7.1 specifies. A
+	// request without it resolves across the caller's memberships and is
+	// refused with `ambiguous_project` (409) only if genuinely ambiguous —
+	// never served against a guess, because that would mean acting on the
+	// wrong tenant's project. It also selects the org for routes that name
+	// none, such as creating a project.
+	//
+	// See docs/open-questions.md Q6.
+	OrgContextHeader *OrgContextHeader `json:"X-Halyard-Org,omitempty"`
 }
 
 // CreateSessionParams defines parameters for CreateSession.
@@ -336,11 +468,17 @@ type RequestMagicLinkJSONRequestBody RequestMagicLinkJSONBody
 // VerifyMagicLinkJSONRequestBody defines body for VerifyMagicLink for application/json ContentType.
 type VerifyMagicLinkJSONRequestBody VerifyMagicLinkJSONBody
 
+// AcceptInviteJSONRequestBody defines body for AcceptInvite for application/json ContentType.
+type AcceptInviteJSONRequestBody AcceptInviteJSONBody
+
 // CreateOrgJSONRequestBody defines body for CreateOrg for application/json ContentType.
 type CreateOrgJSONRequestBody = CreateOrgRequest
 
 // CreateInviteJSONRequestBody defines body for CreateInvite for application/json ContentType.
 type CreateInviteJSONRequestBody = CreateInviteRequest
+
+// ChangeMemberRoleJSONRequestBody defines body for ChangeMemberRole for application/json ContentType.
+type ChangeMemberRoleJSONRequestBody ChangeMemberRoleJSONBody
 
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = CreateProjectRequest

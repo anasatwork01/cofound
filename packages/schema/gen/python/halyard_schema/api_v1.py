@@ -2,7 +2,7 @@
 #   filename:  api.openapi.yaml
 
 from __future__ import annotations
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Annotated, Any
 from pydantic import AwareDatetime, BaseModel, ConfigDict, EmailStr, Field, RootModel
 from uuid import UUID
@@ -122,7 +122,7 @@ class Uuid(RootModel[UUID]):
     ]
 
 
-class GitAuthority(Enum):
+class GitAuthority(StrEnum):
     internal = "internal"
     github = "github"
 

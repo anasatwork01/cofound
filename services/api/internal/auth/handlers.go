@@ -17,6 +17,7 @@ import (
 	"github.com/anasatwork01/cofound/packages/schema/gen/go/common"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -348,31 +349,42 @@ func (h *Handlers) view(ctx context.Context, userID uuid.UUID) (apiv1.AuthSessio
 	out.User.Email = openapi_types.Email(email)
 	out.User.Name = name
 
-	rows, err := h.Pool.Unscoped().Query(ctx, `
-		select o.id, o.slug, o.name, m.role
-		  from org_members m
-		  join orgs o on o.id = m.org_id
-		 where m.user_id = $1
-		 order by o.name`, userID)
-	if err != nil {
-		return out, fmt.Errorf("auth: load orgs: %w", err)
-	}
-	defer rows.Close()
-
 	// Non-nil even when empty: the schema marks `orgs` required, and a nil
 	// slice marshals to null rather than [], which the generated decoder on the
 	// console side would reject.
 	out.Orgs = []apiv1.AuthOrgMembership{}
-	for rows.Next() {
-		var m apiv1.AuthOrgMembership
-		var id, slug, orgName, role string
-		if err := rows.Scan(&id, &slug, &orgName, &role); err != nil {
-			return out, fmt.Errorf("auth: scan org: %w", err)
+
+	// Read in a USER scope, not unscoped. `orgs` and `org_members` carry
+	// policies, and migration 00016 made them readable by the user they belong
+	// to precisely so this query is possible before any org is current. An
+	// unscoped read returns zero rows and the console renders an org switcher
+	// with nothing in it — which is how this was found.
+	err := h.Pool.ScopeUser(ctx, userID.String(), func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			select o.id, o.slug, o.name, m.role
+			  from org_members m
+			  join orgs o on o.id = m.org_id
+			 where m.user_id = $1
+			 order by o.name`, userID)
+		if err != nil {
+			return err
 		}
-		m.Id, m.Slug, m.Name, m.Role = common.Uuid(id), common.Slug(slug), orgName, common.Role(role)
-		out.Orgs = append(out.Orgs, m)
+		defer rows.Close()
+		for rows.Next() {
+			var m apiv1.AuthOrgMembership
+			var id, slug, orgName, role string
+			if err := rows.Scan(&id, &slug, &orgName, &role); err != nil {
+				return err
+			}
+			m.Id, m.Slug, m.Name, m.Role = common.Uuid(id), common.Slug(slug), orgName, common.Role(role)
+			out.Orgs = append(out.Orgs, m)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return out, fmt.Errorf("auth: load orgs: %w", err)
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // clientIP reads the peer the chassis resolved.
