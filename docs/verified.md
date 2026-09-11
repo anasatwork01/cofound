@@ -818,6 +818,69 @@ a TypeScript client no union. Adding `type: string` produces the constants and a
   "invite" twice otherwise sends two links, and accepting the older one after
   the newer was revoked is a confusing way to end up with the wrong role.
 
+## Idempotency and rate limiting
+
+Verified 2026-09-11 for task 0.10.
+
+### A claim needs three states, not two
+
+A key is claimed before the handler runs and completed after, so a row is
+`absent`, `claimed but not completed`, or `completed`. The middle one is the
+whole point: without it, a client that retries after a timeout **while the
+original is still running** gets a second execution — the exact failure the
+header exists to prevent. That case answers 409 with `Retry-After`.
+
+The claim is one statement — an `insert ... on conflict do nothing` whose
+result is `union`-ed with a select of the existing row. A select-then-insert
+would let two concurrent first attempts both pass the select, which is the same
+double-execution by another route.
+
+A claim also carries a deadline, because a process that dies mid-request would
+otherwise leave the key claimed forever and the client permanently unable to
+retry.
+
+### The response is captured, not re-derived
+
+A replay returns the bytes the first attempt wrote. Re-rendering from current
+state would differ — a project created and then renamed replays with the new
+name — and a client reconciling the two would conclude something it did not do
+had happened.
+
+Only some headers are replayed. `Set-Cookie` must never be, because it would
+hand a second caller the first caller's session, and the request id must not be,
+because a replay is a different request and the log correlation would be wrong.
+
+A 5xx releases the claim rather than storing it: the condition that caused it
+may have cleared, so a retry should be a real attempt. A 4xx is stored, because
+the same request will be refused the same way.
+
+### The key is scoped to the org
+
+The key is chosen by the client. Without the org in both the primary key and the
+row-level security policy, one tenant could guess another's key and be handed
+their response. Asserted by having two orgs use the same key and checking
+neither sees the other's answer.
+
+### An unkeyed rate limiter puts everyone in one bucket
+
+`KeyByIP` reads the peer the chassis's `ClientIP` middleware resolved. The first
+version fell back to a single constant when that middleware had not run — which
+looks harmless and means **one abusive client rate-limits everybody**. A test
+with two callers caught it. The fallback is now the TCP peer, which cannot be
+spoofed the way a header can.
+
+### A token bucket rather than a fixed window
+
+A fixed window lets a caller spend the whole allowance in the last millisecond
+of one window and the whole of the next in the first — twice the intended rate,
+at exactly the moment a thundering herd forms. A bucket cannot be made to do
+that, and the test asserts an hour of idleness still only buys the burst.
+
+**The limiter is in-process, which is not the same as "edge".** See
+docs/open-questions.md Q7: an in-process limiter divides the real limit by the
+number of replicas, and making it a genuine quota needs shared state whose shape
+depends on §21 decision 1.
+
 ## Service containers
 
 Pinned in `compose.yaml` and `.github/workflows/ci.yml`. Verified 2026-09-09 by

@@ -3,6 +3,7 @@ package httpapi_test
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/anasatwork01/cofound/packages/schema/gen/go/apiv1"
@@ -285,5 +286,178 @@ func TestEveryMutationWritesAnAuditRow(t *testing.T) {
 		if !seen[want] {
 			t.Errorf("no audit row for %q; SPEC §8 requires the trail", want)
 		}
+	}
+}
+
+// ------------------------------------------------------------ idempotency
+
+// TestARetriedCreateDoesNotActTwice is what SPEC §7.1's header is for.
+//
+// A client whose request times out cannot tell whether the work happened, and
+// the only safe thing it can do is retry. Without this, retrying a create makes
+// a second project.
+func TestARetriedCreateDoesNotActTwice(t *testing.T) {
+	t.Parallel()
+	h := signedIn(t)
+	slug, id := newOrg(t, h, "Retry "+uuid.NewString()[:6])
+	key := uuid.NewString()
+	hdr := map[string]string{
+		tenancy.OrgHeader: slug,
+		"Idempotency-Key": key,
+	}
+	body := map[string]any{"org_id": id, "name": "Once", "prompt": "build it"}
+
+	first, firstBody := h.postWith(t, "/v1/projects", hdr, body)
+	if first.StatusCode != http.StatusCreated {
+		t.Fatalf("first = %d: %s", first.StatusCode, firstBody)
+	}
+	second, secondBody := h.postWith(t, "/v1/projects", hdr, body)
+	if second.StatusCode != http.StatusCreated {
+		t.Fatalf("the replay = %d, want the original 201: %s", second.StatusCode, secondBody)
+	}
+	// The stored bytes, not a fresh rendering: a project created and then
+	// renamed would otherwise replay with the new name, and a client
+	// reconciling the two would conclude something it did not do had happened.
+	if firstBody != secondBody {
+		t.Errorf("the replay differs from the original:\n  %s\n  %s", firstBody, secondBody)
+	}
+	if second.Header.Get("Idempotency-Replayed") != "true" {
+		t.Error("a replay should say so, or a duplicate create is indistinguishable from a fresh one")
+	}
+
+	// And exactly one project exists.
+	_, list := h.reqWith(t, http.MethodGet, "/v1/projects", hdr)
+	var out struct {
+		Projects []apiv1.Project `json:"projects"`
+	}
+	if err := json.Unmarshal([]byte(list), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Projects) != 1 {
+		t.Fatalf("the retry created %d projects, want 1", len(out.Projects))
+	}
+}
+
+// TestReusingAKeyForADifferentRequestIsRefused.
+//
+// Replaying the first response would hide a client bug behind a plausible
+// answer — the caller would believe their second, different request succeeded.
+func TestReusingAKeyForADifferentRequestIsRefused(t *testing.T) {
+	t.Parallel()
+	h := signedIn(t)
+	slug, id := newOrg(t, h, "Mismatch "+uuid.NewString()[:6])
+	key := uuid.NewString()
+	hdr := map[string]string{tenancy.OrgHeader: slug, "Idempotency-Key": key}
+
+	h.postWith(t, "/v1/projects", hdr, map[string]any{"org_id": id, "name": "First", "prompt": "a"})
+	resp, body := h.postWith(t, "/v1/projects", hdr,
+		map[string]any{"org_id": id, "name": "Second", "prompt": "b"})
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422: %s", resp.StatusCode, body)
+	}
+	var env common.ErrorResponse
+	if err := json.Unmarshal([]byte(body), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env.Error.Fix == nil || !contains(*env.Error.Fix, "new key") {
+		t.Errorf("the fix should tell the caller to use a new key: %v", env.Error.Fix)
+	}
+}
+
+// TestDifferentKeysAreDifferentRequests, so the mechanism does not over-collapse.
+func TestDifferentKeysAreDifferentRequests(t *testing.T) {
+	t.Parallel()
+	h := signedIn(t)
+	slug, id := newOrg(t, h, "Distinct "+uuid.NewString()[:6])
+
+	for _, name := range []string{"Alpha", "Beta"} {
+		hdr := map[string]string{tenancy.OrgHeader: slug, "Idempotency-Key": uuid.NewString()}
+		resp, body := h.postWith(t, "/v1/projects", hdr,
+			map[string]any{"org_id": id, "name": name, "prompt": "x"})
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("%s = %d: %s", name, resp.StatusCode, body)
+		}
+	}
+	_, list := h.reqWith(t, http.MethodGet, "/v1/projects",
+		map[string]string{tenancy.OrgHeader: slug})
+	var out struct {
+		Projects []apiv1.Project `json:"projects"`
+	}
+	_ = json.Unmarshal([]byte(list), &out)
+	if len(out.Projects) != 2 {
+		t.Errorf("two distinct keys produced %d projects, want 2", len(out.Projects))
+	}
+}
+
+// TestNoKeyMeansNoIdempotency. §7.1 says endpoints ACCEPT the header, not that
+// they require it — so a caller who sends none gets the old behaviour.
+func TestNoKeyMeansNoIdempotency(t *testing.T) {
+	t.Parallel()
+	h := signedIn(t)
+	slug, id := newOrg(t, h, "Plain "+uuid.NewString()[:6])
+	hdr := map[string]string{tenancy.OrgHeader: slug}
+
+	first, _ := h.postWith(t, "/v1/projects", hdr,
+		map[string]any{"org_id": id, "name": "Same Name", "prompt": "x"})
+	if first.StatusCode != http.StatusCreated {
+		t.Fatalf("first = %d", first.StatusCode)
+	}
+	// Without a key this is a genuine second attempt, and the unique index on
+	// (org_id, slug) is what refuses it — not idempotency.
+	second, _ := h.postWith(t, "/v1/projects", hdr,
+		map[string]any{"org_id": id, "name": "Same Name", "prompt": "x"})
+	if second.StatusCode != http.StatusConflict {
+		t.Errorf("a keyless duplicate = %d, want 409 from the unique index", second.StatusCode)
+	}
+}
+
+// TestAKeyIsScopedToItsOrg.
+//
+// The key is chosen by the client, so without the org in both the primary key
+// and the policy, one tenant could guess another's key and be handed their
+// response.
+func TestAKeyIsScopedToItsOrg(t *testing.T) {
+	t.Parallel()
+	key := "shared-" + uuid.NewString()
+
+	a := signedIn(t)
+	slugA, idA := newOrg(t, a, "KeyA "+uuid.NewString()[:6])
+	respA, bodyA := a.postWith(t, "/v1/projects",
+		map[string]string{tenancy.OrgHeader: slugA, "Idempotency-Key": key},
+		map[string]any{"org_id": idA, "name": "Theirs", "prompt": "x"})
+	if respA.StatusCode != http.StatusCreated {
+		t.Fatalf("org A = %d: %s", respA.StatusCode, bodyA)
+	}
+
+	b := signedIn(t)
+	slugB, idB := newOrg(t, b, "KeyB "+uuid.NewString()[:6])
+	respB, bodyB := b.postWith(t, "/v1/projects",
+		map[string]string{tenancy.OrgHeader: slugB, "Idempotency-Key": key},
+		map[string]any{"org_id": idB, "name": "Mine", "prompt": "x"})
+	if respB.StatusCode != http.StatusCreated {
+		t.Fatalf("org B reusing the same key = %d: %s", respB.StatusCode, bodyB)
+	}
+	if respB.Header.Get("Idempotency-Replayed") == "true" {
+		t.Fatal("org B was handed org A's response")
+	}
+	if bodyA == bodyB {
+		t.Fatal("two orgs using the same key got the same response")
+	}
+}
+
+// TestAnOverlongKeyIsRefused. The key is a primary key column, so an unbounded
+// one is an unbounded index entry.
+func TestAnOverlongKeyIsRefused(t *testing.T) {
+	t.Parallel()
+	h := signedIn(t)
+	slug, id := newOrg(t, h, "Long "+uuid.NewString()[:6])
+	resp, body := h.postWith(t, "/v1/projects",
+		map[string]string{
+			tenancy.OrgHeader: slug,
+			"Idempotency-Key": strings.Repeat("k", 300),
+		},
+		map[string]any{"org_id": id, "name": "X", "prompt": "x"})
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422: %s", resp.StatusCode, body)
 	}
 }

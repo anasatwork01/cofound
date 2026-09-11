@@ -19,6 +19,10 @@ type Handlers struct {
 	Tenancy *tenancy.Resolver
 	Audit   *audit.Writer
 
+	// Idempotent wraps every mutating route. SPEC §7.1: "Every mutating
+	// endpoint accepts Idempotency-Key."
+	Idempotent func(http.Handler) http.Handler
+
 	// InviteTTL is how long an invitation works. Long enough to survive a
 	// weekend and a spam folder; short enough that a stale link in an inbox is
 	// not a standing offer of access to an org.
@@ -40,31 +44,39 @@ func (h *Handlers) Mount(r chi.Router, ew *httpx.ErrorWriter) {
 		h.InviteTTL = DefaultInviteTTL()
 	}
 
+	// Applied per route rather than to the subtree, because it only makes sense
+	// on a mutation: a GET has nothing to replay, and buffering its response
+	// would cost memory for nothing.
+	idem := h.Idempotent
+	if idem == nil {
+		idem = func(next http.Handler) http.Handler { return next }
+	}
+
 	r.Route("/v1", func(r chi.Router) {
 		// Creating an org names no org, so there is no membership to check —
 		// anyone signed in may create one. It is the one authenticated route
 		// with no Require, and it reads the caller from tenancy.Caller.
-		r.Post("/orgs", ew.H(h.createOrg))
+		r.With(idem).Post("/orgs", ew.H(h.createOrg))
 
 		r.Route("/orgs/{org}", func(r chi.Router) {
 			r.With(rs.Require(tenancy.ActionOrgRead)).Get("/members", ew.H(h.listOrgMembers))
-			r.With(rs.Require(tenancy.ActionMemberInvite)).Post("/invites", ew.H(h.createInvite))
-			r.With(rs.Require(tenancy.ActionMemberRemove)).
+			r.With(rs.Require(tenancy.ActionMemberInvite), idem).Post("/invites", ew.H(h.createInvite))
+			r.With(rs.Require(tenancy.ActionMemberRemove), idem).
 				Delete("/members/{user}", ew.H(h.removeMember))
-			r.With(rs.Require(tenancy.ActionMemberRoleChange)).
+			r.With(rs.Require(tenancy.ActionMemberRoleChange), idem).
 				Patch("/members/{user}", ew.H(h.changeMemberRole))
 		})
 
 		// Accepting an invitation names no org either: the invitee is not a
 		// member yet, so there is nothing to check a role against. The token
 		// is the authorisation.
-		r.Post("/invites/accept", ew.H(h.acceptInvite))
+		r.With(idem).Post("/invites/accept", ew.H(h.acceptInvite))
 
-		r.With(rs.Require(tenancy.ActionProjectCreate)).Post("/projects", ew.H(h.createProject))
+		r.With(rs.Require(tenancy.ActionProjectCreate), idem).Post("/projects", ew.H(h.createProject))
 		r.With(rs.Require(tenancy.ActionProjectRead)).Get("/projects", ew.H(h.listProjects))
 		r.Route("/projects/{project}", func(r chi.Router) {
 			r.With(rs.Require(tenancy.ActionProjectRead)).Get("/", ew.H(h.getProject))
-			r.With(rs.Require(tenancy.ActionProjectDelete)).Delete("/", ew.H(h.archiveProject))
+			r.With(rs.Require(tenancy.ActionProjectDelete), idem).Delete("/", ew.H(h.archiveProject))
 		})
 	})
 }

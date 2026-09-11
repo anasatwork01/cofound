@@ -185,6 +185,32 @@ would contradict §7.1's spelling directly.
 
 ---
 
+## Q7 - Rate limiting is in-process, and "edge" needs the host decision
+
+Task 0.10 asks for "edge rate limiting". What it ships is an **in-process**
+token bucket, which is a different thing and worth stating plainly: an
+in-process limiter divides the real limit by the number of replicas, so a
+"50 requests per second per org" limit is actually 50 × replicas. That is
+correct for protecting one process from a hot caller and **wrong** for
+enforcing a per-tenant quota.
+
+Making it correct needs shared state, and what that should be depends on
+§21 decision 1 — the container host. On Cloudflare the natural answer is a
+Durable Object or the platform's own rate limiting, applied genuinely at the
+edge before a request reaches an origin at all; behind an external host it is
+Redis, which the stack already has (§3.3). Choosing now would mean writing
+against whichever one the decision then goes against.
+
+So `httpx.RateLimitStore` is an interface with one in-process implementation,
+and the limiter is wired at both the public and authenticated subtrees so the
+policy — which surfaces, what keys, what numbers — is already decided and
+tested. Only the store changes.
+
+**Owner:** human, via §21 decision 1. **Blocks:** enforcing a real quota. Does
+not block protecting a process, which is in place.
+
+---
+
 ## Blocking decisions (SPEC §21) - needed before phase 1
 
 | #   | Decision                                                                                                    | Owner | Blocks    | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
