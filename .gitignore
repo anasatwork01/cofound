@@ -56,3 +56,12 @@ tmp/
 # Next generates this and rewrites it on every `next typegen`.
 # Next's own docs say it must not be committed or edited.
 next-env.d.ts
+
+# Next 16 writes these on `next dev`, and neither is ours. The CLAUDE.md is a
+# one-line pointer at the AGENTS.md, so leaving it untracked keeps a generated
+# file from being read as project instructions by an agent working in
+# apps/console — this repo's real instructions are the CLAUDE.md at the root.
+# Disable generation entirely with `agentRules: false` in next.config if the
+# churn ever matters more than the Next 16 guidance they carry.
+apps/console/AGENTS.md
+apps/console/CLAUDE.md

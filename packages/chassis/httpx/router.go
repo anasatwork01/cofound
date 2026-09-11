@@ -43,6 +43,11 @@ type RouterConfig struct {
 	// forge a traceparent to graft its spans onto another tenant's trace.
 	// Exposed for task 1.17; unused in 0.4.
 	PublicEndpoint func(*http.Request) bool
+
+	// PanicHook reports a recovered panic to an error reporter. nil means
+	// none, which is what every test and every service without a SENTRY_DSN
+	// gets.
+	PanicHook PanicHook
 }
 
 // Mux is the assembled router and its three subtrees.
@@ -95,7 +100,7 @@ func Router(cfg RouterConfig) *Mux {
 	root.Use(RouteTag)
 	root.Use(LogFields)
 	root.Use(AccessLog(log))
-	root.Use(Recover(cfg.Errors))
+	root.Use(Recover(cfg.Errors, cfg.PanicHook))
 
 	m := &Mux{Root: root, cfg: cfg}
 

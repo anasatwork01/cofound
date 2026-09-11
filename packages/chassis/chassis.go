@@ -23,6 +23,7 @@ import (
 	"github.com/anasatwork01/cofound/packages/chassis/lifecycle"
 	"github.com/anasatwork01/cofound/packages/chassis/logging"
 	"github.com/anasatwork01/cofound/packages/chassis/logkey"
+	"github.com/anasatwork01/cofound/packages/chassis/observability"
 	"github.com/anasatwork01/cofound/packages/chassis/telemetry"
 )
 
@@ -58,6 +59,13 @@ type Service struct {
 	// Exporter opts this binary into an OTLP exporter. nil links none —
 	// importing telemetry/otlp costs roughly 65 modules and 10MB.
 	Exporter telemetry.ExporterFactory
+
+	// Reporter opts this binary into error reporting (SPEC 17.3). nil links
+	// none, and so does a bound factory with no SENTRY_DSN — see
+	// observability/sentry.Init, where "no DSN" has to mean "no client" rather
+	// than "a disabled client", because a disabled sentry-go client still runs
+	// a 100ms ticker for the life of the process.
+	Reporter observability.ReporterFactory
 }
 
 // Runtime is what a service's Setup receives.
@@ -118,7 +126,8 @@ type Chassis struct {
 //     problem at once rather than one per deploy cycle.
 //  2. logger — slog.SetDefault, so a third-party library's log.Printf becomes
 //     JSON through the redaction Guard.
-//  3. telemetry — never blocks on a collector.
+//  3. telemetry — never blocks on a collector; then error reporting, which is
+//     nil unless a service main opted in AND a DSN is bound.
 //  4. health registry.
 //  5. router, mounting /healthz and /readyz on the root BEFORE any auth.
 //  6. service Setup, then service Probes.
@@ -182,6 +191,44 @@ func New(ctx context.Context, o Options) (*Chassis, error) {
 		return nil, err
 	}
 
+	// 3b. error reporting (SPEC 17.3). Two facts shape this:
+	//
+	// Nothing is constructed unless a service main opted in AND a DSN resolved,
+	// so development, CI and any self-hosted deploy pay nothing — not a
+	// goroutine, not a ticker.
+	//
+	// A bound DSN with no factory is the silent misconfiguration worth a line:
+	// an operator sets SENTRY_DSN, sees no error, and gets no issues.
+	var reporter observability.Reporter
+	if svc.Reporter != nil {
+		r, rerr := svc.Reporter(ctx, observability.Config{
+			DSN:     cfg.Sentry.DSN,
+			Service: cfg.Service, Version: cfg.Version, Commit: cfg.Commit,
+			Env: string(cfg.Env), InstanceID: cfg.InstanceID,
+		})
+		if rerr != nil {
+			return nil, rerr
+		}
+		reporter = r
+	} else if cfg.Sentry.DSN != "" {
+		log.LogAttrs(ctx, slog.LevelWarn,
+			"a Sentry DSN is configured but this binary links no error reporter",
+			slog.String(logkey.ConfigKey, config.KeySentryDSN),
+			slog.String(logkey.Reason, "set Service.Reporter in the service main"))
+	}
+	// Registered last in the shutdown sequence's telemetry phase, after the
+	// span flush, so the drain's own spans are already gone by the time an
+	// issue links to them.
+	telemetryShutdown := tel.Shutdown
+	var panicHook httpx.PanicHook
+	if reporter != nil {
+		rep := reporter
+		telemetryShutdown = func(sctx context.Context) error {
+			return errors.Join(tel.Shutdown(sctx), rep.Shutdown(sctx))
+		}
+		panicHook = rep.CapturePanic
+	}
+
 	// 4. health
 	reg := health.New(health.Options{
 		Interval: cfg.Readiness.Interval, Timeout: cfg.Readiness.Timeout,
@@ -202,6 +249,7 @@ func New(ctx context.Context, o Options) (*Chassis, error) {
 		HandlerTimeout:  cfg.HTTP.HandlerTimeout,
 		MaxBodyBytes:    cfg.HTTP.MaxBodyBytes,
 		ReadinessDetail: cfg.Readiness.Detail,
+		PanicHook:       panicHook,
 	})
 
 	c := &Chassis{
@@ -210,11 +258,21 @@ func New(ctx context.Context, o Options) (*Chassis, error) {
 	}
 	rt := c.Runtime()
 
+	// From here on a failure must not leave the reporter's transport running:
+	// New returning an error means the process is about to exit through
+	// Main, which never reaches the shutdown sequence.
+	abandon := func(err error) (*Chassis, error) {
+		if reporter != nil {
+			_ = reporter.Shutdown(ctx)
+		}
+		return nil, err
+	}
+
 	// 6. service
 	if svc.Setup != nil {
 		closer, serr := svc.Setup(ctx, rt)
 		if serr != nil {
-			return nil, serr
+			return abandon(serr)
 		}
 		c.closer = closer
 	}
@@ -224,7 +282,7 @@ func New(ctx context.Context, o Options) (*Chassis, error) {
 
 	// 7. readiness: block until the first pass
 	if serr := reg.Start(ctx); serr != nil {
-		return nil, serr
+		return abandon(serr)
 	}
 
 	// 8. listener
@@ -240,7 +298,7 @@ func New(ctx context.Context, o Options) (*Chassis, error) {
 		DrainTimeout:      cfg.Shutdown.DrainTimeout,
 		ServerTimeout:     cfg.Shutdown.ServerTimeout,
 		TelemetryTimeout:  cfg.Shutdown.TelemetryTimeout,
-	}, log, handler, reg, drain, mux.Handler(), tel.Shutdown, clk)
+	}, log, handler, reg, drain, mux.Handler(), telemetryShutdown, clk)
 
 	if cfg.AdminAddr != "" {
 		c.admin = NewAdminServer(cfg.AdminAddr, log, level, reg, loader.Resolved())

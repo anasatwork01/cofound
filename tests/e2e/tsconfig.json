@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  /*
+   * Like `tests/console`, these tests belong to no package, so
+   * `pnpm -r --filter '@halyard/*' typecheck` never sees them. Playwright runs
+   * TypeScript by transpiling it — esbuild strips the types without checking
+   * them — so nothing else in this repository would notice a type error here
+   * until it became a runtime error inside a browser.
+   *
+   * `playwright.config.ts` is pulled in from the repository root deliberately:
+   * it is the other half of this suite and lives outside any project otherwise.
+   *
+   * The a11y job runs `tsc -p tests/e2e` before the tests. See ci.yml.
+   */
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["**/*.ts", "../../playwright.config.ts"]
+}
