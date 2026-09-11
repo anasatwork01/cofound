@@ -26,6 +26,58 @@ Status values: `unverified` · `verified` · `contradicted` · `blocked`
 | 14  | Auth.js / Better Auth - status, Drizzle adapter support, behaviour on Cloudflare Workers                           | unverified | -          | Blocks SPEC §21 decision 4, task 5.6                                                                                                                                                                                                                                                                                               |
 | 15  | Whether Workers can host the generated Next.js apps with the driver chosen in decision 3                           | unverified | -          | Blocks task 3.9                                                                                                                                                                                                                                                                                                                    |
 
+## Design system typefaces
+
+Verified 2026-09-12 for task L.5, when `docs/mockup.html` was authored and the
+console stopped using a system font stack. CLAUDE.md working agreement 2
+applies to a new dependency the console downloads on every cold start, so the
+families were confirmed to exist and the bytes were measured rather than
+estimated.
+
+| Family                         | On Google Fonts | Shape              | Latin subset   |
+| ------------------------------ | --------------- | ------------------ | -------------- |
+| **Atkinson Hyperlegible Next** | v7              | variable `400 700` | **33.2 KB**    |
+| **Atkinson Hyperlegible Mono** | v8              | static 400, 600    | 17.3 + 10.5 KB |
+
+**61.0 KB for the whole type system**, latin subset, woff2 (magic `wOF2`
+confirmed on each file). One variable file covers all four weights the design
+uses, which is why the sans costs one request rather than four.
+
+Note the plain `Atkinson Hyperlegible` family — without `Next` — now **404s** on
+the Google Fonts CSS API. It has been superseded, so a copy-pasted older
+snippet will silently fail to load and fall through to the stack.
+
+### `adjustFontFallback` does not apply to these families
+
+`next/font/google` generates a metric-matched fallback `@font-face` only for
+families in Next's own metrics database, and neither Atkinson family is in it.
+**Verified by building and grepping the output**: no `Fallback` face appears,
+and `adjustFontFallback: true` is silently a no-op.
+
+That matters rather than being trivia. `display: swap` with no metric-matched
+fallback reflows the page when the webfont lands, and in this console the reflow
+lands on the credit gauge — top bar, every screen, a reserved slot for every
+readout — which is exactly the jitter SPEC §18's persistent chrome must not
+have.
+
+So the fallback faces are authored by hand in `apps/console/src/app/globals.css`
+from metrics measured off the real fonts with fontTools:
+
+| Font                  | unitsPerEm | ascent | descent | avg lowercase advance |
+| --------------------- | ---------- | ------ | ------- | --------------------- |
+| Atkinson Next         | 1000       | 98.40% | 31.60%  | 48.673% of em         |
+| Atkinson Mono         | 1000       | 98.40% | 31.60%  | 63.200% of em         |
+| Arial (sans fallback) | 2048       | -      | -       | 48.954% of em         |
+| Courier New (mono)    | 2048       | -      | -       | 60.010% of em         |
+
+`size-adjust` is the ratio of those advances: **99.43%** for the sans,
+**105.32%** for the mono. **Re-measure if either family is replaced** — a stale
+`size-adjust` is worse than none, because it reflows in a direction nobody
+expects.
+
+`adjustFontFallback: true` is left set in `fonts.ts`. If a future Next version
+adds these metrics, the hand-authored faces become redundant rather than wrong.
+
 ## SPEC §22 item 1 — `@opennextjs/cloudflare`
 
 Verified 2026-09-11 for task 0.11. Where a fact decides a version pin it was read from the

@@ -1,33 +1,20 @@
-# Console design tokens — how this is structured, and what to do when the mockup lands
+# Console design tokens
 
 SPEC §3.1: "The design system is defined by the approved mockup — read
 `docs/mockup.html` and extract tokens from it rather than inventing new ones."
 
-**`docs/mockup.html` does not exist.** It was never supplied, is not in this
-repository's history, and `docs/open-questions.md` Q0 records it as
-unrecoverable and owned by a human (task L.5). Task 0.11 still had to ship the
-console shell, so this file explains the shape that decision took.
+**`docs/mockup.html` is that file**, authored 2026-09-12 for task L.5. Everything
+in `src/tokens/` is extracted from it. If the two ever disagree, the mockup is
+right and this package is stale.
 
-## The rule this obeys
-
-CLAUDE.md is explicit that the approved mockup wins for the console, and the
-`frontend-design` skill agrees: "where the brief pins down a visual direction,
-follow it exactly." A missing mockup is not permission to invent a visual
-identity for the console — a distinctive one would be **harder** to replace
-than a plain one, because identity leaks out of a palette and into component
-structure, density and motion.
-
-So 0.11 ships the token layer's **structure**, which SPEC §18 fully specifies,
-and treats every **value** as provisional and replaceable.
-
-## Two tiers, and only one of them is provisional
+## Two tiers, and only one of them holds colours
 
 ```
-tier 1  palette.css      raw values      PROVISIONAL — the mockup replaces this file
+tier 1  palette.css      raw values      the ONLY file with a colour literal
            ↓
-tier 2  semantic tokens  named by role   PERMANENT — SPEC §18 fixes these names
+tier 2  tokens.css       named by role   the names SPEC §18 fixes
            ↓
-        components       reference tier 2 only, never tier 1
+        components       tier 2 only, never tier 1
 ```
 
 Tier 2's names are not a style choice. SPEC §18 fixes the semantics:
@@ -38,71 +25,86 @@ Tier 2's names are not a style choice. SPEC §18 fixes the semantics:
 | `--waiting` | waiting on you     | incomplete Stripe onboarding, a DNS-pending domain        |
 | `--live`    | live               | a deployed version serving traffic, a healthy preview     |
 
-§18's point is that these are **one learned pattern, not three**: the same
-three states for an ads approval, Stripe onboarding and a pending domain. So
-there is one `Status` primitive and no ad-hoc badges.
+§18's point is that these are **one learned pattern, not three**. So there is one
+`Status` primitive, no ad-hoc badges, and its type makes a fourth state
+unrepresentable.
 
-## What "provisional" is enforced to mean
+## The rule that built the three states
 
-A promise in a comment is not a promise. Two tests hold this:
+They are anchored on **contrast**, not on lightness. Each solid sits at 4.6:1
+against `--raw-grey-100`, the darkest surface any text sits on, and its lightness
+falls wherever that puts it. Near-white ink then lands at 6.29 / 6.30 / 6.34 —
+a spread of **0.05**, which is the only measurable form "one learned pattern"
+has.
 
-1. **No component may name a colour.** A test greps the console and `packages/ui`
-   for hex literals, `rgb(`, `hsl(` and Tailwind's built-in colour classes
-   (`bg-blue-500` and friends), and fails on any hit outside `palette.css`. So
-   swapping the mockup's values in is a one-file change by construction, not by
-   good intentions.
-2. **The provisional pairs already meet §18's contrast floor.** §18 requires
-   4.5:1 minimum. The test computes the real WCAG ratio for every
-   foreground/background pair the semantic layer defines, so when the mockup's
-   values land the same test says whether they pass — the swap is checked, not
-   trusted.
+Pinning lightness is the obvious move and it does not work. Equal L is not equal
+treatment: three colours pinned to the same lightness drift to a **0.90** spread
+on exactly the pair a reader sees. Task 0.11's provisional palette made that
+mistake, and measuring it is what caught it.
 
-## The provisional values, and why they look like this
+> **If a state colour ever has to move** — someone dislikes the amber, a hue gets
+> rotated — re-anchor to 4.6:1 against `--raw-grey-100` and let lightness fall
+> where it falls. **Never re-pin lightness.**
 
-Deliberately quiet, and chosen to be _uncharacteristic_ rather than
-characteristic:
+## What the guards enforce
 
-- **A neutral near-grey ground, not a warm cream.** Warm cream (#F4F1EA) with a
-  terracotta accent is the single commonest generated-design tell, and it would
-  read as a design decision rather than a placeholder.
-- **System font stack, no webfont.** A typeface is the loudest identity choice
-  in an interface and the mockup owns it. A system stack is also zero bytes,
-  which matters on Workers.
-- **Monospace only for SHAs.** The skill advises against monospace for small
-  data labels; §18 explicitly requires "SHAs present but demoted to small
-  monospace". The brief wins.
-- **Violet / amber / teal hues are taken from §18's own words**, at
-  restrained saturation. The hues are specified; the exact values are not.
+A promise in a comment is not a promise. Three tests hold this:
 
-## Where the boldness goes
+1. **No component may name a colour.** `tests/console/tokens-quarantine.test.ts`
+   fails on a hex literal, a Tailwind built-in colour utility, an arbitrary
+   value (`bg-[red]` compiles to real CSS), a CSS shorthand, any of the 148
+   named colours, or a direct `--raw-*` reference — anywhere outside
+   `palette.css`. That last one matters most: a component pinned to
+   `--raw-violet-600` would keep violet when the mockup remaps `--color-agent`,
+   so a future change would miscolour silently instead of failing.
+2. **Every pair clears its floor.** `tests/console/contrast.test.ts` resolves
+   the real values through their `var()` indirection and asserts 4.5:1 for text,
+   3:1 for control boundaries. This is what checked the extraction rather than
+   trusting it.
+3. **Every token name resolves.** `tests/console/shell-structure.test.ts` walks
+   both `apps/console/src` and `packages/ui/src` and fails on a name the
+   contract does not define — because an unknown Tailwind utility generates no
+   rule at all, so `text-live-inks` would silently render inherited ink on a
+   teal chip at 2.6:1 with nothing red anywhere.
 
-One element carries this interface, and SPEC §18 names it rather than leaving it
-to taste: the credit gauge sits in the top bar on **every** screen, showing
-build and runtime as separate bars with the active hold drawn as **hatching** —
-"deliberate: users need to see burn while causing it."
+## Things that are deliberate, and cost something if changed
 
-That is the most characteristic thing in this product's world. You are watching
-an agent spend your money in real time, and the hatched hold is the only widget
-in the console that shows a commitment which has not yet resolved. Everything
-around it stays quiet.
+- **The page ground is mid-light (L 92.5%), not near-white.** That is what lets
+  three luminance planes — sunken, page, raised — carry the whole hierarchy with
+  **no box-shadow anywhere in the product**, and what puts ink at 11.47:1 rather
+  than the 19:1 that halates across a long session. Expect a pull toward a
+  near-white default; it costs both properties.
+- **There is no `#ffffff`.** `--raw-grey-0` is `#f9fbf8`, and it doubles as the
+  ink on all three solids.
+- **Radius encodes what a thing is**, not how new the design is: `0` for
+  instruments and data surfaces you read, `--radius-sm` for anything you
+  operate, `--radius-md` for anything that floats. `--radius-lg` is declared
+  because the contract carries three and is deliberately unused — inventing a
+  job for it would invent a fourth tier.
+- **Mono is the voice of measurement and never of labels.** Credits, costs,
+  durations, versions, positions, SHAs. Not captions, not eyebrows, not prose.
+  The rule also delivers tabular figures by construction.
+- **Italic has exactly one job**: marking a value as provisional, such as an
+  estimated cost shown before a turn runs.
+- **The fonts' fallback metrics are measured, not guessed.** `next/font`'s
+  `adjustFontFallback` does not cover these families, so the metric-matched
+  faces are authored in `apps/console/src/app/globals.css`. See
+  `docs/verified.md`. **Re-measure if either family is replaced** — a stale
+  `size-adjust` is worse than none.
 
-The hatching is a CSS `repeating-linear-gradient` over the bar's filled
-portion, not an image, so it inherits the semantic colour and survives the
-token swap. It is also not motion: it is a static texture, because a moving
-hold would draw the eye continuously while a user is trying to work.
+## Changing the design
 
-## When `docs/mockup.html` arrives
+1. Change `docs/mockup.html` first. It is the source; this package is downstream.
+2. Re-extract into `palette.css`. If anything outside that file needs to change,
+   the quarantine test is telling you a component cheated.
+3. Run the contrast test. If a pair drops below its floor, the design has to
+   move — not the floor.
+4. A **dark theme** is a second block of raw values plus `color-scheme: light
+dark`, and a second set of pairs in `contrast.test.ts`. No component changes
+   at all. Until those pairs are measured, dark would ship unmeasured.
 
-1. Extract its values into `palette.css`. Nothing else should need to change —
-   and if something does, that is the quarantine test telling you a component
-   cheated.
-2. Run the contrast test. It will say whether the mockup's own pairs clear
-   4.5:1; if they do not, that is a conversation with whoever approved it, not a
-   thing to quietly adjust.
-3. Re-check the type scale and density against the mockup, which are the two
-   axes a palette swap does not carry.
-4. Delete the "provisional" banner from `palette.css` and this section.
-5. SPEC §21 decision 9 — whether the console targets primarily non-technical
-   users — changes the visual register (warmth, density, how much code is
-   exposed). It is still open. The mockup presumably answers it; if the mockup
-   arrives without that decision being made, ask before extracting.
+**SPEC §21 decision 9 is answered by implication here.** §21.9 itself says the
+mockup assumes semi-technical, and the mockup was authored on that assumption. A
+purely non-technical audience would want a warmer palette and less code exposure
+— a re-extraction plus a copy pass, not a rebuild. It is recorded as open to
+overrule in `docs/open-questions.md`.

@@ -1,0 +1,1214 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Halyard console — approved mockup</title>
+
+    <!--
+      THE APPROVED MOCKUP. SPEC §3.1, SPEC §18.
+
+      SPEC §3.1: "The design system is defined by the approved mockup — read
+      docs/mockup.html and extract tokens from it rather than inventing new
+      ones." This is that file. Everything in packages/ui/src/tokens/ is
+      extracted from the token table below, and tests/console/contrast.test.ts
+      asserts the ratios.
+
+      Authored 2026-09-12 for task L.5, which had been open since the original
+      file was found to be missing and unrecoverable (docs/open-questions.md Q0).
+
+      This page is a working document rather than a picture of one: the tokens
+      below are the real values, the components are drawn with them, and the
+      contrast figures were computed rather than estimated. If a number here
+      disagrees with the console, the console is wrong.
+    -->
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Atkinson+Hyperlegible+Next:wght@400..700&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      /* ===================================================================
+         TOKENS — the extraction target.
+
+         Raw values first, then the semantic names that map onto them. This
+         is the same two-tier shape as packages/ui/src/tokens/, deliberately:
+         a component never names a colour, only a role.
+         =================================================================== */
+      :root {
+        /* --- raw: greens-greys -------------------------------------------
+           A single green-grey ramp at H≈131. Not a neutral grey and not a
+           blue-grey: a faint green cast reads as daylight rather than as
+           screen, and it is what keeps a mid-light ground from looking
+           dirty. There is no #ffffff anywhere in this system. */
+        --raw-grey-0: #f9fbf8; /* oklch(98.6% 0.004 134.8) */
+        --raw-grey-50: #e5e7e3; /* oklch(92.5% 0.006 128.5) */
+        --raw-grey-100: #d6d9d4; /* oklch(88.2% 0.007 132.4) */
+        --raw-grey-200: #cacdc8; /* oklch(84.5% 0.008 132.4) */
+        --raw-grey-500: #72766f; /* oklch(56.0% 0.012 131.4) */
+        --raw-grey-600: #5a5e56; /* oklch(47.6% 0.014 128.8) */
+        --raw-grey-900: #272c23; /* oklch(28.5% 0.018 131.2) */
+
+        /* --- raw: the three states --------------------------------------
+           Hues are fixed by SPEC §18. The VALUES are anchored on contrast,
+           not on lightness — see "How these were built" below. */
+        --raw-violet-600: #6c49af; /* oklch(49.6% 0.156 296.0) */
+        --raw-amber-600: #8a4f0a; /* oklch(48.7% 0.108  61.8) */
+        --raw-teal-600: #1a6768; /* oklch(47.0% 0.072 196.3) */
+
+        --raw-violet-50: #f1edff; /* oklch(95.4% 0.024 296.1) */
+        --raw-amber-50: #ffecdd; /* oklch(95.4% 0.029  60.8) */
+        --raw-teal-50: #daf7f7; /* oklch(95.5% 0.030 196.7) */
+
+        /* --- semantic ---------------------------------------------------- */
+        --color-agent: var(--raw-violet-600);
+        --color-agent-ink: var(--raw-grey-0);
+        --color-agent-soft: var(--raw-violet-50);
+
+        --color-waiting: var(--raw-amber-600);
+        --color-waiting-ink: var(--raw-grey-0);
+        --color-waiting-soft: var(--raw-amber-50);
+
+        --color-live: var(--raw-teal-600);
+        --color-live-ink: var(--raw-grey-0);
+        --color-live-soft: var(--raw-teal-50);
+
+        --color-surface: var(--raw-grey-50);
+        --color-surface-raised: var(--raw-grey-0);
+        --color-surface-sunken: var(--raw-grey-100);
+
+        --color-ink: var(--raw-grey-900);
+        --color-ink-muted: var(--raw-grey-600);
+
+        --color-border: var(--raw-grey-200);
+        --color-border-strong: var(--raw-grey-500);
+        --color-focus: var(--raw-grey-900);
+
+        /* --- type ---------------------------------------------------------
+           One superfamily, two voices. Atkinson Hyperlegible Next is
+           variable 400–700 in a single 33.2 KB latin file; the Mono ships
+           static 400 and 600 at 17.3 and 10.5 KB. 61 KB for the whole type
+           system, self-hosted. */
+        --font-sans:
+          "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+          sans-serif;
+        --font-mono:
+          "Atkinson Hyperlegible Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+        /* base 15px, ratio 1.125, seven contiguous steps. Page headings stop
+           at 2xl; 3xl is declared for the rare case and is currently unused. */
+        --text-xs: 0.7407rem; /* 11.85px */
+        --text-sm: 0.8333rem; /* 13.33px */
+        --text-base: 0.9375rem; /* 15.00px */
+        --text-lg: 1.0547rem; /* 16.88px */
+        --text-xl: 1.1865rem; /* 18.98px */
+        --text-2xl: 1.335rem; /* 21.36px */
+        --text-3xl: 1.5019rem; /* 24.03px */
+
+        /* --- radius -------------------------------------------------------
+           Radius encodes what a thing IS, not how new the design is:
+             0     instruments and data surfaces — you read these
+             sm    anything you operate — buttons, inputs, chips
+             md    anything that floats above the page — menus, dialogs
+           lg is declared because the contract has three; nothing uses it. */
+        --radius-sm: 0.1875rem; /* 3px */
+        --radius-md: 0.5rem; /* 8px */
+        --radius-lg: 0.75rem; /* 12px — declared, unused */
+
+        --space-1: 0.25rem;
+        --space-2: 0.5rem;
+        --space-3: 0.75rem;
+        --space-4: 1rem;
+        --space-5: 1.25rem;
+        --space-6: 1.5rem;
+        --space-8: 2rem;
+      }
+
+      /* ===================================================================
+         PAGE — this document's own chrome. Not part of the design system.
+         =================================================================== */
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--color-surface);
+        color: var(--color-ink);
+        font-family: var(--font-sans);
+        font-size: var(--text-base);
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+      }
+      .doc {
+        max-width: 68rem;
+        margin: 0 auto;
+        padding: var(--space-8) var(--space-6) 6rem;
+      }
+      .doc > header {
+        border-bottom: 1px solid var(--color-border-strong);
+        padding-bottom: var(--space-6);
+        margin-bottom: var(--space-8);
+      }
+      h1 {
+        font-size: var(--text-2xl);
+        font-weight: 700;
+        margin: 0 0 var(--space-2);
+        letter-spacing: -0.01em;
+      }
+      h2 {
+        font-size: var(--text-xl);
+        font-weight: 700;
+        margin: 3.5rem 0 var(--space-2);
+        letter-spacing: -0.01em;
+      }
+      h3 {
+        font-size: var(--text-lg);
+        font-weight: 600;
+        margin: var(--space-6) 0 var(--space-2);
+      }
+      p,
+      li {
+        max-width: 66ch;
+      }
+      .lede {
+        color: var(--color-ink-muted);
+        font-size: var(--text-lg);
+      }
+      .note {
+        color: var(--color-ink-muted);
+        font-size: var(--text-sm);
+        max-width: 66ch;
+      }
+      code,
+      .mono {
+        font-family: var(--font-mono);
+        font-size: 0.92em;
+      }
+      .panel {
+        background: var(--color-surface-raised);
+        border: 1px solid var(--color-border);
+        padding: var(--space-5);
+        margin: var(--space-4) 0;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: var(--text-sm);
+        margin: var(--space-3) 0;
+      }
+      th {
+        text-align: left;
+        font-weight: 600;
+        padding: var(--space-2) var(--space-3);
+        border-bottom: 1px solid var(--color-border-strong);
+      }
+      td {
+        padding: var(--space-2) var(--space-3);
+        border-bottom: 1px solid var(--color-border);
+        vertical-align: top;
+      }
+      td.num,
+      th.num {
+        font-family: var(--font-mono);
+        font-variant-numeric: tabular-nums;
+      }
+      .swatch {
+        width: 2.5rem;
+        height: 1.5rem;
+        border: 1px solid var(--color-border-strong);
+        display: inline-block;
+        vertical-align: middle;
+      }
+
+      /* ===================================================================
+         COMPONENTS — the real design.
+         =================================================================== */
+
+      /* --- focus: one ring, everywhere -------------------------------------
+         2px ink at 2px offset. The offset gap shows the surface behind, which
+         is what keeps it legible on a coloured button: the pair that actually
+         renders is the page ground against violet, 5.26:1. */
+      :where(a, button, input, textarea, [tabindex]):focus-visible {
+        outline: 2px solid var(--color-focus);
+        outline-offset: 2px;
+      }
+
+      /* --- state marks -----------------------------------------------------
+         Shape as well as hue, because meaning must never be carried by colour
+         alone, and because the same three shapes appear in the status rail
+         where they are learned before they are needed.
+           violet  circle    the agent owns this
+           amber   triangle  this is waiting on you
+           teal    square    this is live */
+      .pip {
+        display: inline-block;
+        width: 0.5rem;
+        height: 0.5rem;
+        flex: none;
+      }
+      .pip-agent {
+        background: var(--color-agent);
+        border-radius: 50%;
+      }
+      .pip-live {
+        background: var(--color-live);
+      }
+      .pip-waiting {
+        width: 0;
+        height: 0;
+        background: none;
+        border-left: 0.3rem solid transparent;
+        border-right: 0.3rem solid transparent;
+        border-bottom: 0.52rem solid var(--color-waiting);
+      }
+      .state {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+        font-size: var(--text-sm);
+        font-weight: 500;
+      }
+
+      /* Escalation by scope: a fact gets a pip and a word, a row gets a band,
+         a region gets a block with a 2px rule. An ads approval is a row, an
+         incomplete Stripe onboarding is a region, a DNS-pending domain is a
+         fact — they differ in scope, not in kind. */
+      .band {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--text-sm);
+      }
+      .band-waiting {
+        background: var(--color-waiting-soft);
+      }
+      .band-agent {
+        background: var(--color-agent-soft);
+      }
+      .region {
+        padding: var(--space-3) var(--space-4);
+        border-left: 2px solid var(--color-waiting);
+        background: var(--color-waiting-soft);
+      }
+      .region-agent {
+        border-left-color: var(--color-agent);
+        background: var(--color-agent-soft);
+      }
+
+      /* --- buttons ---------------------------------------------------------
+         Operable, so radius-sm. Violet is the agent-owned action; amber is the
+         one waiting on you; neither is decoration. */
+      .btn {
+        font: inherit;
+        font-weight: 500;
+        font-size: var(--text-sm);
+        padding: 0.4rem 0.8rem;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--color-border-strong);
+        background: var(--color-surface-raised);
+        color: var(--color-ink);
+        cursor: pointer;
+      }
+      .btn-agent {
+        background: var(--color-agent);
+        border-color: var(--color-agent);
+        color: var(--color-agent-ink);
+      }
+      .btn-waiting {
+        background: var(--color-waiting);
+        border-color: var(--color-waiting);
+        color: var(--color-waiting-ink);
+      }
+
+      .field {
+        font: inherit;
+        font-size: var(--text-base);
+        width: 100%;
+        padding: var(--space-3);
+        border: 1px solid var(--color-border-strong);
+        border-radius: var(--radius-sm);
+        background: var(--color-surface-raised);
+        color: var(--color-ink);
+      }
+
+      /* --- the credit gauge ------------------------------------------------
+         SPEC §18 asks for this by name: build and runtime as separate bars
+         with the active hold drawn as hatching, in the top bar on every
+         screen, "because users need to see burn while causing it".
+
+         Everything else in this console is quiet so that this can be read at
+         a glance. Four things make it work:
+
+         1. ASYMMETRIC GRADUATION. Only runtime is graduated, because only
+            runtime has a threshold that can hurt someone else's customers
+            (§16.3). The shape teaches the difference.
+         2. THE HOLD IS HATCHED AND VIOLET IN BOTH BARS. A hold is the agent's
+            claim on money not yet spent, so it wears the agent's colour
+            wherever it appears — otherwise "hold" is two patterns, not one.
+         3. NOTHING COLOURED IS DRAWN ON SPENT FILL. The hatch sits on unspent
+            track only, so the pair that renders is violet on the track at
+            4.59:1 rather than violet on teal at 1.01:1.
+         4. IT DOES NOT MOVE. The hatch is a static gradient and numerals swap
+            instantly. A hold that shimmered would pull the eye continuously
+            while someone is trying to work. */
+      .gauge {
+        display: grid;
+        grid-template-columns: 3.75rem 1fr 5.25rem;
+        align-items: center;
+        gap: var(--space-2) var(--space-3);
+        width: 23rem;
+        font-size: var(--text-xs);
+      }
+      .gauge-label {
+        color: var(--color-ink-muted);
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+      .track {
+        position: relative;
+        height: 0.5rem;
+        background: var(--color-surface-sunken);
+        /* square ends, deliberately: a rounded cap makes a nearly-empty bar
+           unreadable at exactly the moment the reading matters */
+        border-radius: 0;
+        overflow: hidden;
+      }
+      .fill {
+        position: absolute;
+        inset: 0 auto 0 0;
+      }
+      .fill-build {
+        background: var(--color-agent);
+      }
+      .fill-runtime {
+        background: var(--color-live);
+      }
+      .hold {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        background-image: repeating-linear-gradient(
+          -45deg,
+          var(--color-agent) 0 2px,
+          transparent 2px 5px
+        );
+      }
+      .tick {
+        position: absolute;
+        top: -2px;
+        bottom: -2px;
+        width: 2px;
+        background: var(--color-border-strong);
+      }
+      .tick-crossed {
+        background: var(--color-waiting);
+      }
+      .grad {
+        position: absolute;
+        top: 50%;
+        width: 1px;
+        height: 3px;
+        margin-top: -1.5px;
+        background: var(--color-border-strong);
+      }
+      .readout {
+        font-family: var(--font-mono);
+        font-variant-numeric: tabular-nums;
+        font-weight: 600;
+        text-align: right;
+        white-space: nowrap;
+      }
+      .readout small {
+        font-weight: 400;
+        color: var(--color-ink-muted);
+      }
+      /* Unknown: the instrument is drawn, the reading is absent. A dashed
+         centreline and an em dash, not a zero — zero is a lie that reads as
+         "you are out of credits" — and not a spinner, because it is not
+         loading, it is unbuilt. */
+      .track-unknown::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 50%;
+        height: 1px;
+        margin-top: -0.5px;
+        background-image: repeating-linear-gradient(
+          to right,
+          var(--color-border-strong) 0 3px,
+          transparent 3px 6px
+        );
+      }
+
+      /* --- top bar ---------------------------------------------------------
+         52px, the gauge on the right, on every screen. */
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-6);
+        height: 52px;
+        padding: 0 var(--space-4);
+        background: var(--color-surface-raised);
+        border-bottom: 1px solid var(--color-border);
+      }
+      .wordmark {
+        font-weight: 700;
+        font-size: var(--text-lg);
+        letter-spacing: -0.015em;
+      }
+      .crumb {
+        color: var(--color-ink-muted);
+        font-size: var(--text-sm);
+      }
+
+      /* --- screens ---------------------------------------------------------
+         Three luminance planes carry the whole hierarchy: sunken, page,
+         raised. There is not a single box-shadow in this product. */
+      .screen {
+        border: 1px solid var(--color-border-strong);
+        background: var(--color-surface);
+        margin: var(--space-4) 0 var(--space-6);
+        overflow: hidden;
+      }
+      .rail {
+        width: 200px;
+        flex: none;
+        background: var(--color-surface-sunken);
+        padding: var(--space-3) 0;
+        font-size: var(--text-sm);
+      }
+      .rail a {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        padding: 0.35rem var(--space-4);
+        color: var(--color-ink);
+        text-decoration: none;
+      }
+      .rail a[aria-current] {
+        font-weight: 600;
+        background: var(--color-surface);
+      }
+      .split {
+        display: flex;
+        min-height: 20rem;
+      }
+      .chat {
+        flex: 1;
+        padding: var(--space-4);
+        border-right: 1px solid var(--color-border);
+        background: var(--color-surface);
+      }
+      .preview {
+        flex: 1;
+        background: var(--color-surface-sunken);
+        padding: var(--space-4);
+      }
+      .turn {
+        margin-bottom: var(--space-4);
+      }
+      .turn-you {
+        color: var(--color-ink);
+      }
+      .turn-meta {
+        color: var(--color-ink-muted);
+        font-size: var(--text-xs);
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+      }
+      .sha {
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--color-ink-muted);
+      }
+      .prov {
+        font-style: italic;
+      }
+      .rows > div {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-2) var(--space-3);
+        border-bottom: 1px solid var(--color-border);
+        font-size: var(--text-sm);
+      }
+      .rows > div:last-child {
+        border-bottom: 0;
+      }
+      .grow {
+        flex: 1;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="doc">
+      <header>
+        <h1>Halyard console — approved mockup</h1>
+        <p class="lede">
+          The design system SPEC §3.1 refers to. Tokens are extracted from this file into
+          <code>packages/ui/src/tokens/</code>; the contrast figures below are computed, and
+          <code>tests/console/contrast.test.ts</code> asserts them on every build.
+        </p>
+        <p class="note">
+          Authored 2026-09-12 for task L.5. The audience is a semi-technical founder watching an
+          agent work on their product and approving the things that spend money — which is SPEC §21
+          decision 9 answered as the specification itself assumed it.
+        </p>
+      </header>
+
+      <h2>How these values were built</h2>
+      <p>
+        The three state hues are fixed by SPEC §18 — violet is an agent-owned action, amber is
+        waiting on you, teal is live — and the clause that actually constrains the design is the one
+        after them: they are
+        <strong>&ldquo;one learned pattern, not three&rdquo;</strong>, used identically for an ads
+        approval, an incomplete Stripe onboarding and a DNS-pending domain.
+      </p>
+      <p>
+        So the three were built by <strong>anchoring contrast, not lightness</strong>. Each solid is
+        placed at 4.6:1 against <code>grey-100</code>, the darkest surface any text sits on, and its
+        lightness is allowed to fall wherever that puts it. Pinning lightness instead is the obvious
+        move and it does not work: it is the same number in a space that does not predict contrast,
+        and the three drift apart by the only measure that matters.
+      </p>
+      <div class="panel">
+        <table>
+          <thead>
+            <tr>
+              <th>What is equalised</th>
+              <th class="num">violet</th>
+              <th class="num">amber</th>
+              <th class="num">teal</th>
+              <th class="num">spread</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Contrast anchored at 4.6:1 on <code>grey-100</code> — this system</td>
+              <td class="num">6.29</td>
+              <td class="num">6.30</td>
+              <td class="num">6.34</td>
+              <td class="num"><strong>0.05</strong></td>
+            </tr>
+            <tr>
+              <td>Lightness pinned to three decimal places — rejected</td>
+              <td class="num" colspan="3">drifts</td>
+              <td class="num">0.90</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="note" style="margin: 0">
+          Near-white ink on each of the three solids. A 0.05 spread is &ldquo;one learned
+          pattern&rdquo; in its only measurable form.
+          <strong>If a state colour ever has to move</strong>
+          — someone dislikes the amber, a hue gets rotated — re-anchor to 4.6:1 against
+          <code>grey-100</code> and let lightness fall where it falls. Never re-pin lightness.
+        </p>
+      </div>
+
+      <h2>Colour</h2>
+      <p class="note">
+        A single green-grey ramp at H≈131 carries every surface. It is not a neutral grey and not a
+        blue-grey: the faint green reads as daylight rather than as screen. There is no
+        <code>#ffffff</code> in the system — the page ground is deliberately mid-light so that three
+        luminance planes can carry the whole hierarchy with no box-shadow anywhere, and ink lands at
+        11.5:1 rather than the 19:1 that halates across a long session.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th>Raw</th>
+            <th class="num">Hex</th>
+            <th class="num">OKLCH</th>
+            <th>Role</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="swatch" style="background: #f9fbf8"></span></td>
+            <td><code>grey-0</code></td>
+            <td class="num">#f9fbf8</td>
+            <td class="num">98.6% .004 135</td>
+            <td>Raised surface, and the ink on all three solids</td>
+          </tr>
+          <tr>
+            <td><span class="swatch" style="background: #e5e7e3"></span></td>
+            <td><code>grey-50</code></td>
+            <td class="num">#e5e7e3</td>
+            <td class="num">92.5% .006 129</td>
+            <td>Page ground</td>
+          </tr>
+          <tr>
+            <td><span class="swatch" style="background: #d6d9d4"></span></td>
+            <td><code>grey-100</code></td>
+            <td class="num">#d6d9d4</td>
+            <td class="num">88.2% .007 132</td>
+            <td>Sunken: gauge track, wells, the rail</td>
+          </tr>
+          <tr>
+            <td><span class="swatch" style="background: #cacdc8"></span></td>
+            <td><code>grey-200</code></td>
+            <td class="num">#cacdc8</td>
+            <td class="num">84.5% .008 132</td>
+            <td>Hairline — a seam where one kind of content ends</td>
+          </tr>
+          <tr>
+            <td><span class="swatch" style="background: #72766f"></span></td>
+            <td><code>grey-500</code></td>
+            <td class="num">#72766f</td>
+            <td class="num">56.0% .012 131</td>
+            <td>Control edge (SC 1.4.11), gauge graduations</td>
+          </tr>
+          <tr>
+            <td><span class="swatch" style="background: #5a5e56"></span></td>
+            <td><code>grey-600</code></td>
+            <td class="num">#5a5e56</td>
+            <td class="num">47.6% .014 129</td>
+            <td>Muted ink</td>
+          </tr>
+          <tr>
+            <td><span class="swatch" style="background: #272c23"></span></td>
+            <td><code>grey-900</code></td>
+            <td class="num">#272c23</td>
+            <td class="num">28.5% .018 131</td>
+            <td>Ink, and the focus ring</td>
+          </tr>
+          <tr>
+            <td><span class="swatch" style="background: #6c49af"></span></td>
+            <td><code>violet-600</code></td>
+            <td class="num">#6c49af</td>
+            <td class="num">49.6% .156 296</td>
+            <td>Agent-owned action</td>
+          </tr>
+          <tr>
+            <td><span class="swatch" style="background: #8a4f0a"></span></td>
+            <td><code>amber-600</code></td>
+            <td class="num">#8a4f0a</td>
+            <td class="num">48.7% .108 62</td>
+            <td>Waiting on you</td>
+          </tr>
+          <tr>
+            <td><span class="swatch" style="background: #1a6768"></span></td>
+            <td><code>teal-600</code></td>
+            <td class="num">#1a6768</td>
+            <td class="num">47.0% .072 196</td>
+            <td>Live</td>
+          </tr>
+          <tr>
+            <td><span class="swatch" style="background: #f1edff"></span></td>
+            <td><code>violet-50</code></td>
+            <td class="num">#f1edff</td>
+            <td class="num">95.4% .024 296</td>
+            <td>Agent tint — row bands and chips</td>
+          </tr>
+          <tr>
+            <td><span class="swatch" style="background: #ffecdd"></span></td>
+            <td><code>amber-50</code></td>
+            <td class="num">#ffecdd</td>
+            <td class="num">95.4% .029 61</td>
+            <td>Waiting tint</td>
+          </tr>
+          <tr>
+            <td><span class="swatch" style="background: #daf7f7"></span></td>
+            <td><code>teal-50</code></td>
+            <td class="num">#daf7f7</td>
+            <td class="num">95.5% .030 197</td>
+            <td>Live tint</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Measured contrast</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Pair</th>
+            <th class="num">Ratio</th>
+            <th class="num">Floor</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Near-white on violet / amber / teal</td>
+            <td class="num">6.29 · 6.30 · 6.34</td>
+            <td class="num">4.5</td>
+          </tr>
+          <tr>
+            <td>Ink on page / raised / sunken</td>
+            <td class="num">11.47 · 13.72 · 10.02</td>
+            <td class="num">4.5</td>
+          </tr>
+          <tr>
+            <td>Muted ink on page / raised / sunken</td>
+            <td class="num">5.32 · 6.37 · 4.65</td>
+            <td class="num">4.5</td>
+          </tr>
+          <tr>
+            <td>Each solid on its own tint</td>
+            <td class="num">5.70 · 5.71 · 5.85</td>
+            <td class="num">4.5</td>
+          </tr>
+          <tr>
+            <td>Control edge on raised / page / sunken</td>
+            <td class="num">4.45 · 3.72 · 3.25</td>
+            <td class="num">3.0</td>
+          </tr>
+          <tr>
+            <td>Hold hatch on unspent track</td>
+            <td class="num">4.59</td>
+            <td class="num">3.0</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="note">
+        The tints are at L 95.4–95.5% so they read as a band on both the page and a raised panel
+        (1.08–1.10:1) while still carrying their own solid as text at 5.7:1. That is what lets a
+        tinted row band work anywhere rather than on raised surfaces only.
+      </p>
+
+      <h2>Type</h2>
+      <p>
+        <strong>Atkinson Hyperlegible Next</strong> and <strong>Atkinson Hyperlegible Mono</strong>,
+        one superfamily in two voices. The reason is the reading task rather than a mood: a founder
+        scans amounts, durations, IDs and file paths at speed, and confusing
+        <span class="mono">1 l I</span> or <span class="mono">0 O</span> here costs real money.
+        Atkinson is the typeface engineered specifically to disambiguate those, and it is humanist
+        enough to keep a mid-grey instrument panel from reading cold. Drawing both voices from one
+        family means a sentence with an ID in it reads as one line rather than a paste.
+      </p>
+      <p class="note">
+        61 KB for the whole system, self-hosted: 33.2 KB for the variable 400–700 sans, 17.3 and
+        10.5 KB for mono 400 and 600. Verified on Google Fonts 2026-09-12 and recorded in
+        <code>docs/verified.md</code>.
+      </p>
+
+      <div class="panel">
+        <div style="font-size: var(--text-2xl); font-weight: 700; letter-spacing: -0.01em">
+          Your app is live
+        </div>
+        <div style="font-size: var(--text-xl); font-weight: 600">Ship</div>
+        <div style="font-size: var(--text-lg); font-weight: 600">Recent versions</div>
+        <div style="font-size: var(--text-base)">
+          The agent added a checkout page and updated two files.
+        </div>
+        <div style="font-size: var(--text-sm); color: var(--color-ink-muted)">
+          Waiting for you to approve a $40 daily budget
+        </div>
+        <div class="mono" style="font-size: var(--text-xs); color: var(--color-ink-muted)">
+          v14 · 4e2a91c · 1,284 credits
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Step</th>
+            <th class="num">rem</th>
+            <th class="num">px</th>
+            <th>Used for</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>3xl</code></td>
+            <td class="num">1.5019</td>
+            <td class="num">24.03</td>
+            <td>Declared; unused</td>
+          </tr>
+          <tr>
+            <td><code>2xl</code></td>
+            <td class="num">1.3350</td>
+            <td class="num">21.36</td>
+            <td>Page headings — the ceiling</td>
+          </tr>
+          <tr>
+            <td><code>xl</code></td>
+            <td class="num">1.1865</td>
+            <td class="num">18.98</td>
+            <td>Section headings</td>
+          </tr>
+          <tr>
+            <td><code>lg</code></td>
+            <td class="num">1.0547</td>
+            <td class="num">16.88</td>
+            <td>Panel titles, the wordmark</td>
+          </tr>
+          <tr>
+            <td><code>base</code></td>
+            <td class="num">0.9375</td>
+            <td class="num">15.00</td>
+            <td>Body, chat, inputs</td>
+          </tr>
+          <tr>
+            <td><code>sm</code></td>
+            <td class="num">0.8333</td>
+            <td class="num">13.33</td>
+            <td>UI labels, rows, buttons</td>
+          </tr>
+          <tr>
+            <td><code>xs</code></td>
+            <td class="num">0.7407</td>
+            <td class="num">11.85</td>
+            <td>Gauge, metadata, SHAs</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="note">
+        Base 15px, ratio 1.125, seven contiguous steps. Four weights and no more — 400 body, 500 UI
+        labels, 600 panel titles and the gauge readout, 700 page headings — because hierarchy here
+        is weight and position rather than size.
+      </p>
+      <p class="note">
+        <strong>Mono is the voice of measurement and never of labels.</strong> Credits, costs,
+        durations, versions, positions and SHAs — anything you compare down a column. Not captions,
+        not eyebrows, not prose. That rule also delivers tabular figures by construction.
+        <strong>Italic has exactly one job</strong>: marking a value as provisional, such as
+        <span class="prov">an estimated cost shown before a turn runs</span>.
+      </p>
+
+      <h2>The three states</h2>
+      <p>
+        Shape as well as hue, because meaning may never be carried by colour alone — and because the
+        same three marks appear in the project rail, where they are learned before they are needed.
+      </p>
+      <div class="panel" style="display: flex; gap: var(--space-6); flex-wrap: wrap">
+        <span class="state"><span class="pip pip-agent"></span> Agent is building</span>
+        <span class="state"><span class="pip pip-waiting"></span> Waiting on you</span>
+        <span class="state"><span class="pip pip-live"></span> Live</span>
+      </div>
+      <p>
+        <strong>Escalation is by scope, not by kind.</strong> §18's three examples differ in how
+        much of the screen they concern: a DNS-pending domain is a fact, an ads approval is a row,
+        an incomplete Stripe onboarding is a region. So one vocabulary, three scales.
+      </p>
+      <div class="panel" style="padding: 0">
+        <div class="band band-waiting">
+          <span class="pip pip-waiting"></span>
+          <span class="grow">Google Ads wants a $40 daily budget</span>
+          <button class="btn btn-waiting">Approve</button>
+        </div>
+      </div>
+      <div class="region">
+        <div class="state" style="margin-bottom: var(--space-2)">
+          <span class="pip pip-waiting"></span> Stripe needs two more details
+        </div>
+        <div style="font-size: var(--text-sm)">
+          Payouts start once Stripe has your bank details and a business address.
+        </div>
+        <div style="margin-top: var(--space-3)">
+          <button class="btn btn-waiting">Finish setup</button>
+        </div>
+      </div>
+      <p class="note">
+        <strong>Precedence, decided once and applied everywhere:</strong> amber before violet before
+        teal, one marker per row. A version that is both live and waiting on you shows amber,
+        because the thing you can act on wins.
+      </p>
+
+      <h2>The credit gauge</h2>
+      <p>
+        The one place this interface spends any boldness, because SPEC §18 asks for it by name:
+        build and runtime as separate bars with the active hold drawn as hatching, in the top bar on
+        every screen, &ldquo;because users need to see burn while causing it&rdquo;.
+      </p>
+
+      <h3>Normal</h3>
+      <div class="panel">
+        <div class="gauge">
+          <div class="gauge-label">Build</div>
+          <div class="track">
+            <div class="fill fill-build" style="width: 34%"></div>
+            <div class="hold" style="left: 34%; width: 9%"></div>
+          </div>
+          <div class="readout">1,284 <small>left</small></div>
+
+          <div class="gauge-label">Runtime</div>
+          <div class="track">
+            <div class="fill fill-runtime" style="width: 41%"></div>
+            <div class="grad" style="left: 25%"></div>
+            <div class="grad" style="left: 50%"></div>
+            <div class="grad" style="left: 75%"></div>
+            <div class="tick" style="left: 80%"></div>
+            <div class="readout" style="display: none"></div>
+          </div>
+          <div class="readout">6,050 <small>left</small></div>
+        </div>
+      </div>
+      <p class="note">
+        <strong>Only runtime is graduated</strong>, and that asymmetry is the argument: §16.3 gives
+        the two meters different exhaustion behaviours. Running out of build credit pauses the
+        builder, which is harmless because you are at the keyboard. Running out of runtime credit
+        reaches your app's own customers, so it follows a policy ladder — and only it has a
+        threshold worth watching approach. The 80% mark is drawn from a full balance in neutral
+        grey, so you learn where the warning lives before you arrive at it.
+      </p>
+
+      <h3>A hold is open</h3>
+      <p class="note">
+        The hatched band is credit the agent has claimed for a turn that has not finished. It is
+        <strong>violet in both bars</strong> — a hold is the agent's claim wherever it appears, so
+        it must look the same in both meters or &ldquo;hold&rdquo; is two patterns rather than one —
+        and it is drawn on unspent track only, never over spent fill.
+      </p>
+
+      <h3>Runtime is low</h3>
+      <div class="panel">
+        <div class="gauge">
+          <div class="gauge-label">Build</div>
+          <div class="track"><div class="fill fill-build" style="width: 62%"></div></div>
+          <div class="readout">610 <small>left</small></div>
+
+          <div class="gauge-label">
+            <span class="pip pip-waiting"></span>
+            Runtime
+          </div>
+          <div class="track">
+            <div class="fill fill-runtime" style="width: 86%"></div>
+            <div class="grad" style="left: 25%"></div>
+            <div class="grad" style="left: 50%"></div>
+            <div class="grad" style="left: 75%"></div>
+            <div class="tick tick-crossed" style="left: 80%"></div>
+          </div>
+          <div class="readout">920 <small>left</small></div>
+        </div>
+      </div>
+      <p class="note">
+        The tick turns amber only <em>once crossed</em>, and the label gains the waiting triangle.
+        Amber must not appear at 40%, when nothing is waiting on you.
+      </p>
+
+      <h3>Unknown</h3>
+      <div class="panel">
+        <div class="gauge">
+          <div class="gauge-label">Build</div>
+          <div class="track track-unknown"></div>
+          <div class="readout">&mdash;</div>
+
+          <div class="gauge-label">Runtime</div>
+          <div class="track track-unknown"></div>
+          <div class="readout">&mdash;</div>
+        </div>
+        <p class="note" style="margin: var(--space-3) 0 0">
+          Credits aren't metered yet. They start when your first app goes live.
+        </p>
+      </div>
+      <p class="note">
+        The instrument is drawn and the reading is absent. <strong>Not zero</strong> — zero is a lie
+        that reads as &ldquo;you are out of credits&rdquo; — and not a spinner, because nothing is
+        loading; the meter does not exist yet. Assistive technology is told the same thing: the
+        progressbar omits <code>aria-valuenow</code> entirely rather than reporting nought. Every
+        slot is reserved in every state, so the top bar never reflows when credits arrive, when a
+        hold opens, or when runtime goes low. Numerals swap instantly and never tween.
+      </p>
+
+      <h2>Screens</h2>
+
+      <h3>Top bar — on every screen</h3>
+      <div class="screen">
+        <div class="topbar">
+          <div style="display: flex; align-items: baseline; gap: var(--space-3)">
+            <span class="wordmark">Halyard</span>
+            <span class="crumb">Northwind</span>
+          </div>
+          <div class="gauge" style="width: 21rem">
+            <div class="gauge-label">Build</div>
+            <div class="track">
+              <div class="fill fill-build" style="width: 34%"></div>
+              <div class="hold" style="left: 34%; width: 9%"></div>
+            </div>
+            <div class="readout">1,284</div>
+            <div class="gauge-label">Runtime</div>
+            <div class="track">
+              <div class="fill fill-runtime" style="width: 41%"></div>
+              <div class="grad" style="left: 25%"></div>
+              <div class="grad" style="left: 50%"></div>
+              <div class="grad" style="left: 75%"></div>
+              <div class="tick" style="left: 80%"></div>
+            </div>
+            <div class="readout">6,050</div>
+          </div>
+        </div>
+      </div>
+
+      <h3>Builder — <code>/p/[project]</code></h3>
+      <div class="screen">
+        <div class="topbar">
+          <div style="display: flex; align-items: baseline; gap: var(--space-3)">
+            <span class="wordmark">Halyard</span><span class="crumb">Northwind</span>
+          </div>
+          <div class="crumb">credits ·&nbsp;gauge</div>
+        </div>
+        <div class="split">
+          <nav class="rail">
+            <a href="#" aria-current="page"><span class="pip pip-agent"></span> Build</a>
+            <a href="#"><span class="pip" style="visibility: hidden"></span> Files</a>
+            <a href="#"><span class="pip" style="visibility: hidden"></span> History</a>
+            <a href="#"><span class="pip" style="visibility: hidden"></span> Features</a>
+            <a href="#"><span class="pip pip-live"></span> Ship</a>
+            <a href="#"><span class="pip pip-waiting"></span> Ads</a>
+            <a href="#"><span class="pip" style="visibility: hidden"></span> Search</a>
+          </nav>
+          <div class="chat">
+            <div class="turn">
+              <div class="turn-you">Add a checkout page that takes card payments.</div>
+            </div>
+            <div class="turn">
+              <div class="state" style="margin-bottom: var(--space-1)">
+                <span class="pip pip-agent"></span> Building
+              </div>
+              <div>
+                I added a checkout page and connected it to Stripe. You edited 2 files while I
+                worked, so I kept your changes.
+              </div>
+              <div class="turn-meta" style="margin-top: var(--space-2)">
+                <span>2 min</span>
+                <span class="sha">4e2a91c</span>
+                <span class="mono">38 credits</span>
+              </div>
+            </div>
+            <div class="band band-agent">
+              <span class="pip pip-agent"></span>
+              <span class="grow">Running the checkout test</span>
+              <span class="mono prov">~12 credits</span>
+            </div>
+          </div>
+          <div class="preview">
+            <div class="state" style="margin-bottom: var(--space-3)">
+              <span class="pip pip-live"></span> Preview
+            </div>
+            <div
+              style="
+                background: var(--color-surface-raised);
+                border: 1px solid var(--color-border);
+                height: 12rem;
+              "
+            ></div>
+          </div>
+        </div>
+      </div>
+
+      <h3>New project — <code>/new</code></h3>
+      <div class="screen">
+        <div class="topbar">
+          <span class="wordmark">Halyard</span>
+          <div class="crumb">credits ·&nbsp;gauge</div>
+        </div>
+        <div style="padding: var(--space-8) var(--space-6); max-width: 44rem">
+          <h1 style="margin-bottom: var(--space-4)">What are you building?</h1>
+          <textarea
+            class="field"
+            rows="3"
+            placeholder="A booking site for my barber shop"
+          ></textarea>
+          <div
+            style="
+              margin-top: var(--space-3);
+              display: flex;
+              gap: var(--space-3);
+              align-items: center;
+            "
+          >
+            <button class="btn btn-agent">Start building</button>
+            <span class="note">Or pick a template below.</span>
+          </div>
+        </div>
+      </div>
+
+      <h3>Ship — <code>/p/[project]/ship</code></h3>
+      <div class="screen">
+        <div style="padding: var(--space-5); background: var(--color-surface-raised)">
+          <div style="font-size: var(--text-xl); font-weight: 700; margin-bottom: var(--space-3)">
+            Ship
+          </div>
+          <div class="rows">
+            <div>
+              <span class="pip pip-live"></span>
+              <span class="grow">northwind.example.com</span>
+              <span class="mono" style="color: var(--color-ink-muted)">v14 · 4e2a91c</span>
+              <span>Live since Tuesday</span>
+            </div>
+            <div class="band-waiting" style="border-bottom: 1px solid var(--color-border)">
+              <span class="pip pip-waiting"></span>
+              <span class="grow">shop.northwind.example.com</span>
+              <span class="grow" style="color: var(--color-ink-muted)"
+                >Add a DNS record to finish</span
+              >
+              <button class="btn">Show me how</button>
+            </div>
+            <div>
+              <span class="pip" style="visibility: hidden"></span>
+              <span class="grow">v13</span>
+              <span class="mono" style="color: var(--color-ink-muted)">9b1f70a</span>
+              <button class="btn">Roll back to this</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="note">
+        <strong>No git vocabulary on a primary surface.</strong> &ldquo;You edited 2 files&rdquo;,
+        never &ldquo;commit 4e2a91c&rdquo;; the SHA is present but demoted to small mono. An action
+        keeps its name through the whole flow, so the button that says
+        <em>Roll back to this</em> produces a toast that says <em>Rolled back</em> — never
+        <em>Reverted</em>.
+      </p>
+
+      <h2>Empty and error</h2>
+      <div class="panel">
+        <div style="font-size: var(--text-lg); font-weight: 600">No versions yet</div>
+        <p style="margin: var(--space-2) 0 var(--space-3)">
+          Your first version appears here once you publish. Everything before that stays in preview,
+          where only you can see it.
+        </p>
+        <button class="btn btn-agent">Publish</button>
+      </div>
+      <div class="region">
+        <div class="state" style="margin-bottom: var(--space-2)">
+          <span class="pip pip-waiting"></span> That domain is already in use
+        </div>
+        <div style="font-size: var(--text-sm)">
+          <code>shop.northwind.example.com</code> points somewhere else. Change the DNS record to
+          point here, or pick a different address.
+        </div>
+      </div>
+      <p class="note">
+        An empty state is an invitation to act, not an apology for emptiness. An error says what
+        happened and how to fix it — and never says sorry, because the person reading it wants the
+        next step rather than a feeling.
+      </p>
+
+      <h2>What is not here</h2>
+      <ul class="note">
+        <li>
+          <strong>No dark theme.</strong> Adding one means a second block of raw values and a second
+          set of pairs in <code>contrast.test.ts</code> — no component changes at all. Until those
+          pairs are measured, dark would ship unmeasured.
+        </li>
+        <li>
+          <strong>No box-shadow, anywhere.</strong> Depth is the three luminance planes. A shadow
+          would be a fourth mechanism for something three already do.
+        </li>
+        <li>
+          <strong>No motion except in answer to an action.</strong> No entrances, no shimmer, no
+          counting numerals. The hold in particular is static: a moving hold would pull the eye
+          continuously while someone is trying to work, which is the opposite of what a gauge on
+          every screen is for.
+        </li>
+        <li>
+          <strong>No fourth state.</strong> Three is the whole vocabulary, and
+          <code>&lt;Status&gt;</code>'s type makes a fourth unrepresentable on purpose.
+        </li>
+      </ul>
+    </div>
+  </body>
+</html>

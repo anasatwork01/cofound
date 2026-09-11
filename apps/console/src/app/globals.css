@@ -8,13 +8,56 @@
  * fails silently — a console with no `@theme` and therefore no `bg-agent`.
  *
  * SPEC §3.1 says the design system comes from the approved mockup,
- * `docs/mockup.html`. That file has never been supplied
- * (docs/open-questions.md Q0, task L.5), so the values behind these names are
- * provisional and live in exactly one file — `packages/ui/src/tokens/
- * palette.css` — which is what keeps the eventual swap a one-file job.
+ * `docs/mockup.html`. It exists (task L.5), and the values behind these names
+ * are extracted from it into one file — `packages/ui/src/tokens/palette.css` —
+ * which is the only place in the repository a colour literal may appear.
  */
 @import "tailwindcss";
 @import "@halyard/ui/tokens.css";
+
+/**
+ * Metric-matched fallbacks, measured rather than estimated.
+ *
+ * next/font's `adjustFontFallback` generates these automatically for families
+ * in Next's own metrics database. Atkinson Hyperlegible Next and Mono are NOT
+ * in it - verified by building and grepping the output, where no `Fallback`
+ * face appears - so they are authored here.
+ *
+ * Without them, `display: swap` reflows the page when the webfont arrives. In
+ * this console that lands on the credit gauge, which sits in the top bar on
+ * every screen and reserves a slot for every readout, so the reflow is exactly
+ * the jitter SPEC 18's persistent chrome must not have.
+ *
+ * The numbers come from the real fonts (fontTools, 2026-09-12):
+ *
+ *              unitsPerEm  ascent  descent  avg lowercase advance
+ *   Atkinson Next   1000    98.40%  31.60%   48.673% of em
+ *   Atkinson Mono   1000    98.40%  31.60%   63.200% of em
+ *   Arial           2048      -       -      48.954% of em
+ *   Courier New     2048      -       -      60.010% of em
+ *
+ * size-adjust is the ratio of those advances: 48.673/48.954 = 99.43% for the
+ * sans, 63.200/60.010 = 105.32% for the mono. Re-measure if either family is
+ * replaced; a stale size-adjust is worse than none, because it reflows in a
+ * direction nobody expects.
+ */
+@font-face {
+  font-family: "Halyard Sans Fallback";
+  src: local("Arial"), local("Helvetica Neue"), local("Helvetica");
+  ascent-override: 98.4%;
+  descent-override: 31.6%;
+  line-gap-override: 0%;
+  size-adjust: 99.43%;
+}
+
+@font-face {
+  font-family: "Halyard Mono Fallback";
+  src: local("Courier New"), local("Menlo"), local("Consolas");
+  ascent-override: 98.4%;
+  descent-override: 31.6%;
+  line-gap-override: 0%;
+  size-adjust: 105.32%;
+}
 
 /**
  * Deliberately short.
@@ -27,8 +70,10 @@
  */
 @layer base {
   html {
-    /* The provisional palette is light only. Dark is a second block in
-       palette.css plus `light dark` here, and no component change at all. */
+    /* Light only. Dark is a second block in palette.css plus `light dark`
+       here, and a second set of pairs in contrast.test.ts — no component
+       change at all. Until those pairs are measured, dark would ship
+       unmeasured. */
     color-scheme: light;
   }
 
