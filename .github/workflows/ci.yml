@@ -66,7 +66,18 @@ jobs:
     name: python
     runs-on: ubuntu-latest
     steps:
+      # The only job that needs the `agent/opencode` submodule.
+      # tests/contracts/test_opencode_upstream_contract.py pins upstream source
+      # that SPEC section 17's sandbox boundary and section 19's token
+      # accounting rest on; without the submodule those pins assert nothing, so
+      # the test fails rather than skips when it is absent. fetch-depth 1 is
+      # stated rather than left to the default because it is what makes the
+      # submodule clone shallow too - only the pinned commit's tree is ever
+      # read, never its history.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          fetch-depth: 1
       - id: tv
         run: ./scripts/tool-versions.sh >> "$GITHUB_OUTPUT"
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1

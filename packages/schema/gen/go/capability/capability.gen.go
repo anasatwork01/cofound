@@ -426,9 +426,10 @@ type CapabilityManifestSchemaJsonWebhooksElem struct {
 	// Provider corresponds to the JSON schema field "provider".
 	Provider string `json:"provider" yaml:"provider" mapstructure:"provider"`
 
-	// SPEC 13.3: third-party webhooks cannot target a sandbox tunnel whose URL
-	// changes each session, so they hit a stable relay that forwards to whichever
-	// preview is live and queues with replay when none is.
+	// SPEC 13.3: third-party webhooks cannot target a sandbox tunnel, whose URL
+	// changes on every create and every restore - Modal assigns a random hostname and
+	// offers no way to pin one - so they hit a stable relay that forwards to
+	// whichever preview is live and queues with replay when none is.
 	RelayPath string `json:"relay_path" yaml:"relay_path" mapstructure:"relay_path"`
 }
 

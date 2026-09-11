@@ -24,7 +24,7 @@
         "rank_check",
         "domain_year"
       ],
-      "description": "SPEC 16.2. The four token meters stay separate deliberately."
+      "description": "SPEC 16.2. The four token meters stay separate deliberately - they differ by roughly an order of magnitude in cost. What each one receives is NOT the obvious mapping: tokens_in takes the agent's already cache-adjusted input (so billable input is tokens_in + tokens_cache_read + tokens_cache_write), and tokens_out takes output PLUS reasoning, because the agent's output field excludes reasoning and SPEC 16.2 mandates no fifth meter. Emitting the upstream fields verbatim under-bills by the whole cache volume and never bills reasoning at all. See docs/verified.md, SPEC 22 item 6."
     },
     "Unit": {
       "title": "Unit",

@@ -8,23 +8,786 @@ Status values: `unverified` · `verified` · `contradicted` · `blocked`
 
 ## SPEC §22 checklist
 
-| #   | Fact to verify                                                                                                     | Status     | Checked    | Finding                                                                                                                                                             |
-| --- | ------------------------------------------------------------------------------------------------------------------ | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | `@opennextjs/cloudflare` - Next.js version support, unsupported features, ISR/caching                              | unverified | -          | Blocks tasks 0.9, 0.10, 3.1                                                                                                                                         |
-| 2   | Cloudflare Containers - memory/CPU limits, max request duration, long-lived SSE, pricing                           | unverified | -          | Blocks SPEC §21 decision 1                                                                                                                                          |
-| 3   | Cloudflare for SaaS - custom hostname limits per zone, TLS issuance latency, apex support                          | unverified | -          | Blocks task 3.6                                                                                                                                                     |
-| 4   | Cloudflare Hyperdrive - supported Postgres providers, connection limits, latency                                   | unverified | -          | Blocks tasks 0.10, 3.9                                                                                                                                              |
-| 5   | Modal - Sandbox API, snapshot semantics, tunnel URL stability, volume perf, concurrency limits, non-Python client  | unverified | -          | Blocks phase 1 entirely                                                                                                                                             |
-| 6   | `opencode` - server API, config schema, MCP transport, plugin/hook surface; whether P1/P2/P3/P5 still need patches | partial    | 2026-09-09 | Pinned at tag `v1.18.30` (`3104c1428e`), remote `https://github.com/anomalyco/opencode.git`. Hook/patch feasibility **not** yet assessed - do that before task 1.7. |
-| 7   | Neon - project/branch creation API, branch limits, autoscaling, pricing at thousands of projects                   | unverified | -          | Blocks SPEC §21 decision 3, task 5.4                                                                                                                                |
-| 8   | GitHub Apps - fine-grained permission names, installation token TTL, per-installation rate limits                  | unverified | -          | Blocks task 5.12                                                                                                                                                    |
-| 9   | Google Ads API - developer token process and wait time, basic vs standard access, manager linking                  | unverified | -          | **Long lead time. Start the application during phase 0.**                                                                                                           |
-| 10  | Meta Marketing API - permission names, App Review requirements and timeline, Business Verification                 | unverified | -          | **Long lead time. Start during phase 0.**                                                                                                                           |
-| 11  | Stripe Connect - recommended account type, onboarding requirements, SAQ-A applicability                            | unverified | -          | Blocks task 5.7; confirm SAQ-A with Stripe, don't assume                                                                                                            |
-| 12  | Google Indexing API - current eligibility rules                                                                    | unverified | -          | Blocks task 6.11                                                                                                                                                    |
-| 13  | LLM provider model identifiers, pricing, cache semantics                                                           | unverified | -          | Never hardcode. Config only. See SPEC §16.4                                                                                                                         |
-| 14  | Auth.js / Better Auth - status, Drizzle adapter support, behaviour on Cloudflare Workers                           | unverified | -          | Blocks SPEC §21 decision 4, task 5.6                                                                                                                                |
-| 15  | Whether Workers can host the generated Next.js apps with the driver chosen in decision 3                           | unverified | -          | Blocks task 3.9                                                                                                                                                     |
+| #   | Fact to verify                                                                                                     | Status     | Checked    | Finding                                                                                                                                                                                                                                                                                                                            |
+| --- | ------------------------------------------------------------------------------------------------------------------ | ---------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `@opennextjs/cloudflare` - Next.js version support, unsupported features, ISR/caching                              | unverified | -          | Blocks tasks 0.11, 0.12, 3.1                                                                                                                                                                                                                                                                                                       |
+| 2   | Cloudflare Containers - memory/CPU limits, max request duration, long-lived SSE, pricing                           | unverified | -          | Blocks SPEC §21 decision 1                                                                                                                                                                                                                                                                                                         |
+| 3   | Cloudflare for SaaS - custom hostname limits per zone, TLS issuance latency, apex support                          | unverified | -          | Blocks task 3.6                                                                                                                                                                                                                                                                                                                    |
+| 4   | Cloudflare Hyperdrive - supported Postgres providers, connection limits, latency                                   | unverified | -          | Blocks tasks 0.12, 3.9                                                                                                                                                                                                                                                                                                             |
+| 5   | Modal - Sandbox API, snapshot semantics, tunnel URL stability, volume perf, concurrency limits, non-Python client  | verified   | 2026-09-11 | Python `1.5.5` (wheel read). **No resume primitive**; resume is snapshot-and-recreate with a new id. Tunnel URLs are **not** stable. Deny-by-default egress **exists** (TLS/443 SNI only). A Go SDK now exists - §5.1's premise is false. Latency unmeasured: 1.x needs a benchmark.                                               |
+| 6   | `opencode` - server API, config schema, MCP transport, plugin/hook surface; whether P1/P2/P3/P5 still need patches | verified   | 2026-09-11 | Pinned at `v1.18.30` (`3104c1428e`). **All six §11.2 patches have an upstream mechanism**; `agent/patches/` stays empty. P3 needs **two** env vars, one undocumented; repo `.opencode/plugin/` is RCE (§11.3 gap); `tokens.input` is cache-adjusted (§19 gap). Read, not run - tasks 1.7/1.8 must assert against a running server. |
+| 7   | Neon - project/branch creation API, branch limits, autoscaling, pricing at thousands of projects                   | unverified | -          | Blocks SPEC §21 decision 3, task 5.4                                                                                                                                                                                                                                                                                               |
+| 8   | GitHub Apps - fine-grained permission names, installation token TTL, per-installation rate limits                  | unverified | -          | Blocks task 5.12                                                                                                                                                                                                                                                                                                                   |
+| 9   | Google Ads API - developer token process and wait time, basic vs standard access, manager linking                  | unverified | -          | **Long lead time. Start the application during phase 0.**                                                                                                                                                                                                                                                                          |
+| 10  | Meta Marketing API - permission names, App Review requirements and timeline, Business Verification                 | unverified | -          | **Long lead time. Start during phase 0.**                                                                                                                                                                                                                                                                                          |
+| 11  | Stripe Connect - recommended account type, onboarding requirements, SAQ-A applicability                            | unverified | -          | Blocks task 5.7; confirm SAQ-A with Stripe, don't assume                                                                                                                                                                                                                                                                           |
+| 12  | Google Indexing API - current eligibility rules                                                                    | unverified | -          | Blocks task 6.11                                                                                                                                                                                                                                                                                                                   |
+| 13  | LLM provider model identifiers, pricing, cache semantics                                                           | unverified | -          | Never hardcode. Config only. See SPEC §16.4                                                                                                                                                                                                                                                                                        |
+| 14  | Auth.js / Better Auth - status, Drizzle adapter support, behaviour on Cloudflare Workers                           | unverified | -          | Blocks SPEC §21 decision 4, task 5.6                                                                                                                                                                                                                                                                                               |
+| 15  | Whether Workers can host the generated Next.js apps with the driver chosen in decision 3                           | unverified | -          | Blocks task 3.9                                                                                                                                                                                                                                                                                                                    |
+
+## SPEC §22 item 5 — Modal
+
+Verified 2026-09-11 for task 1.1 against the **modal 1.5.5 wheel source**
+(released 2026-08-28, latest on PyPI) plus current vendor documentation. Where
+a fact is load-bearing it was read out of the wheel rather than taken from
+prose; where only prose exists that is said explicitly.
+
+Versions that matter:
+
+| Thing                                   | Version                          | Note                                                                                      |
+| --------------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------------- |
+| `modal` (Python)                        | **1.5.5**                        | `>=3.10,<3.15`. Pin exactly — see "the surface moves" below                               |
+| `github.com/modal-labs/modal-client/go` | **v0.10.1** (2026-09-10)         | Beta. Breaking changes in 0.8.0, 0.9.0 **and** 0.10.0                                     |
+| `modal-labs/libmodal` (old Go/JS home)  | archived 2026-07-18              | `github.com/modal-labs/libmodal/modal-go` is stale at v0.7.3; do not let it into `go.mod` |
+| Sandbox backend                         | v1 default, **v2 opt-in** (Beta) | `MODAL_SANDBOX_V2=1`. Becomes the default in 1.6.0                                        |
+
+### There is no resume, and SPEC §9's lifecycle depends on one
+
+`resume` does not exist. Not deprecated, not experimental — grepping the whole
+1.5.5 client for any `resume` symbol returns nothing, and the Sandbox method
+set is `create` / `from_id` / `from_name` / `wait` / `poll` / `terminate` /
+`detach`. `terminate()` is terminal: its docstring is "This is a no-op if the
+Sandbox has already finished running."
+
+**Resume must be modelled as snapshot-and-recreate, and the new sandbox has a
+new id.** The mechanism is `snapshot_directory(path, ttl=...)` →
+`Sandbox.create(image=...)` or `sb.mount_image(path, image)`. Modal's own
+guidance points the same way: "If you need a Sandbox to run for more than 24
+hours, we recommend using Filesystem Snapshots to preserve its state."
+
+Three consequences, each of which changes a design rather than an
+implementation detail:
+
+- **`sandbox_id` is a per-incarnation value, not a project identity.** Key
+  everything on `project_id`; store `sandbox.object_id` as disposable.
+- **Only files survive.** Processes, bound ports, in-memory agent context and
+  the tunnel URL are gone. The console's "resuming" must promise a warm
+  filesystem, not a warm process, and `agentd` cold-starts every time.
+- **Snapshots can only be taken from a _running_ sandbox** — both snapshot
+  calls issue an RPC to the live container — so the order is snapshot, _then_
+  terminate. That is what SPEC §9 already says; the point is that it is the
+  only possible order, and it makes idle detection sandboxd's job.
+
+Do **not** reach for memory snapshots to close the gap. They are
+`_experimental_`-prefixed, they **terminate the sandbox in the act of taking
+one**, restore "creates a new one, a clone, with its own identity", restore is
+pinned to the same exact instance type, and they expire after a
+**non-extendable 7 days** — with a re-snapshot inheriting the original expiry,
+so a chain can never outlive the first. "The user comes back next month" alone
+rules them out.
+
+### Snapshots expire in 30 days by default, and cannot be listed
+
+`ttl` defaults to `30 * 24 * 3600` on both `snapshot_filesystem` and
+`snapshot_directory` (read at `modal/sandbox.py:1555` and `:1699`). Filesystem
+snapshots used to persist indefinitely; **1.5.0 changed the default**. A
+project untouched for 31 days silently loses its filesystem unless `ttl=None`
+is passed explicitly. Modal's own Directory Snapshots blog still says "persist
+indefinitely" and "30 days after last use" — it predates the change and is
+wrong on both counts. It is 30 days from **creation**.
+
+There is also **no API to list the snapshots you have created**. The control
+plane is the only possible system of record: store the image id and its expiry
+in Postgres beside the project. A lost row is an unrecoverable storage leak,
+billed until the TTL runs out. And `NotFoundError` on resume is a first-class
+path — fall back to a clean clone from `gitd` — not an unexpected error.
+
+### Volumes and a warm pool are mutually exclusive
+
+`volumes=` is a **`Sandbox.create` parameter only**. There is no documented way
+to attach a Volume to a running sandbox; `mount_image`/`unmount_image` operate
+on Images, not Volumes. So a pool of pre-booted sandboxes cannot have a
+project's Volume attached at claim time. **Pick one: per-project Volumes with a
+cold create, or a warm pool with directory snapshots.** Directory snapshots are
+the better half of that trade — Modal says they are "mounted instantly, and
+their contents are prioritized for pre-loading" — and they also decouple base
+image rebuilds from user state.
+
+Volume performance is independently disqualifying for a working tree. v1 "works
+best when they contain less than 50,000 files", scales attach latency
+**linearly** with file count, and has a hard **500,000 inode** ceiling that
+fails with `ENOSPC`. One mid-size Next.js `node_modules` is routinely
+30k–80k files. v2 removes the file-count limit but Modal states plainly: "we
+don't recommend using Volumes v2 for mission-critical data at this time", and
+tree traversal — exactly what `git status`, a bundler's watcher and a
+dependency resolver do constantly — is **slower** than v1.
+
+Two more Volume traps if one is used as a cache anyway: a reload makes the
+volume **appear empty** to the container that initiated it, and fails with
+"volume busy" if any file is open — so `reload_volumes()` is unusable while a
+dev server or `agentd` is running. And `statfs` is fake: `df`,
+`shutil.disk_usage()` and `os.statvfs()` return placeholder values, which
+several package managers pre-flight against.
+
+**Conclusion: Volumes are for rebuildable caches (pnpm store, build artifacts),
+never for the only copy of user work.** SPEC's git-as-source-of-truth is the
+right call and this is an independent reason for it.
+
+### A running process does not keep a sandbox alive
+
+Modal's definition of activity is narrow and does not include "a process is
+running". A sandbox is active only if an `exec` is running, its stdin is being
+written to, or **a tunnel has an open TCP connection**.
+
+A warm-pool sandbox with `agentd` idling matches none of these and any
+`idle_timeout` will reap it. Worse, `idle_timeout` has **no pre-termination
+hook** — Modal kills without snapshotting, and that session's unsnapshotted
+work is gone. So: leave `idle_timeout` as a wide backstop (30–60 min) against
+sandboxd itself dying, and let sandboxd drive idle detection, snapshot and
+terminate from its own bookkeeping.
+
+Lifetime is capped regardless. `timeout` **defaults to 300 seconds** and is
+capped at **24 hours**, with no documented way to extend a running sandbox.
+Every `Sandbox.create` must pass an explicit `timeout` or a session dies
+mid-turn, and sandboxd needs a scheduled snapshot-and-rotate before the 24h
+ceiling — which is user-visible unless previews are addressed through a
+sandboxd-owned stable URL that proxies to the current tunnel.
+
+### `agentd` must be the entrypoint, not an `exec`
+
+`Sandbox.from_id()` reattaches to a **sandbox** from any process — a pure
+server lookup needing no App object — so sandboxd is free to restart or move
+replicas. **`ContainerProcess` has no equivalent.** There is no `from_id`, its
+constructor needs a private live `TaskCommandRouterClient`, and there is no RPC
+to enumerate running execs. A process handle dies with the sandboxd process
+that created it, and its buffered output dies with it.
+
+Running `agentd` as the sandbox CMD fixes this three ways at once: it is
+Modal's documented pattern for long-lived services, it makes the sandbox exit
+code meaningful, and **only the entrypoint's logs are stored** (`Sandbox.logs`,
+new in 1.5.5 — "only logs from the entrypoint process of a Sandbox are
+currently stored, and streaming logs via this interface is not currently
+supported").
+
+That last limitation also settles a design question: **`Sandbox.logs` cannot
+back SPEC §9's SSE stream.** It is fetch/tail only. The live stream must be
+`agentd` POSTing to sandboxd over authenticated HTTP — which SPEC line 882
+already specifies for telemetry, and should be widened to carry agent output.
+`Sandbox.logs.tail()` is a recovery and audit path.
+
+### Deny-by-default egress exists — this answers the §17.1 open question
+
+`block_network`, `outbound_cidr_allowlist` and `outbound_domain_allowlist` are
+all real parameters on `Sandbox.create` (`modal/sandbox.pyi:192-194`). The two
+allowlists combine **additively** — "traffic that meets either criteria will be
+let through" — and `*.` wildcards match parent and subdomains.
+
+So SPEC §17.1's deny-by-default egress is implementable as a genuine
+defence-in-depth layer: even if the sandbox somehow obtains a credential, the
+allowlist stops it reaching `api.stripe.com`. **But the ceiling has to go into
+the threat model, because it is lower than it first looks:**
+
+- **Domain matching is TLS/443 only, by ClientHello SNI.** Modal does not
+  decrypt: "the Host header, URL path, and body are never inspected." Anything
+  that is not TLS on 443 — **Postgres on 5432 included** — needs a CIDR
+  allowlist, which means resolving the DB host to CIDRs at launch or fronting
+  it with HTTPS.
+- **Domain fronting is documented as a bypass, by Modal.** "A Sandbox can reach
+  a non-allowlisted domain there by sending an allowlisted SNI with the other
+  name in the Host header... the allowlist itself does not prevent the
+  mismatch." Any shared-CDN entry is a live exfiltration channel, and
+  `*.github.com` grants every repo on GitHub, not the project's.
+- **It is Beta and three months old** (`outbound_domain_allowlist` shipped
+  1.5.0, 2026-06-09). Pin the client, add an integration test asserting a
+  blocked destination actually fails, and treat a Modal-side behaviour change
+  as a security regression.
+
+Two implementation traps, both verified in source rather than docs:
+
+1. **Always pass both allowlists on every call.** Python's
+   `_experimental_set_outbound_network_policy` docstring says
+   "outbound_cidr_allowlist: ... If None, all CIDRs are allowed", but the
+   implementation is `allowed_cidrs=list(outbound_cidr_allowlist or [])` inside
+   an `if either is not None` branch (`modal/sandbox.py:1449-1452`) — so
+   updating **only** the domain allowlist silently sets the CIDR allowlist to
+   empty and kills all non-443 egress. The Go SDK refuses the same call
+   outright. The two SDKs are not behaviourally equivalent.
+
+   The `Sandbox.create` path is a **different function** —
+   `_build_network_access` (`modal/sandbox.py:250-269`) — and it is better
+   behaved, which is worth knowing precisely because it makes the behaviours
+   inconsistent: both-`None` is an explicit, deliberate `OPEN`, and
+   `block_network=True` combined with either allowlist **raises**
+   `InvalidError` rather than silently winning. But the same `list(x or [])`
+   applies, so passing one allowlist and not the other still empties the other.
+   The practical rule is identical on both paths; an **empty list on create is
+   therefore a reliable, deliberate deny-all**, which is the right default for
+   §17.
+
+2. **Prefer an empty allowlist to `block_network=True`.** `block_network` also
+   disables i6pn, is mutually exclusive with all three allowlist parameters,
+   and forecloses sandbox-to-sidecar addressing.
+
+Runtime narrowing ("broad during install, narrow for the agent run") exists but
+is Alpha and underscore-prefixed, and **a dimension not set at creation can
+never be narrowed later** — create with `["*"]` if narrowing is wanted. If it
+is used, isolate it behind one function.
+
+### Tunnel URLs are not stable, and are public by default
+
+Tunnel hostnames are "cryptographically random" and server-assigned, with no
+client-side way to request or pin one — `SandboxCreateParams` has no hostname
+field. Combined with "there is no resume", the answer to §22's tunnel-stability
+question is: **the URL changes on every create and every restore, and the KV
+registration for a preview hostname must be rewritten each time and the old
+entry invalidated.** (Marked as inference: Modal never states the negative, it
+follows from the absence of a stop/start API and of any hostname parameter.
+Confirm with one live experiment before 1.x locks the design.)
+
+Modal's `custom_domain` does **not** solve this. The leading label stays
+Modal-assigned, setup is **NS delegation** of a whole subtree to Modal's
+nameservers plus a manual Slack request, and it is Team/Enterprise-gated.
+Halyard's own edge keeps ownership of the hostname.
+
+A tunnel URL is also public: "they are also public on the Internet, so anyone
+can access your application if they are given the URL." Connect tokens are the
+wrong shape for a preview a user opens in a browser (bearer-in-URL, metadata
+capped at 512 chars and explicitly "should not contain secrets"). **Use
+`inbound_cidr_allowlist` to make the tunnel reachable only from Halyard's own
+proxy** and authenticate previews there. Note also that a tunnel is a raw TLS
+TCP stream, not an HTTP reverse proxy — Modal does no L7 processing and adds no
+`X-Forwarded-For`.
+
+One useful interaction: an open tunnel connection counts as activity, so an
+abandoned browser tab keeps a sandbox warm — and billing.
+
+### Secrets are readable environment variables; OIDC is the §17 primitive
+
+Modal Secrets are injected as ordinary env vars, and Modal's own guide reads
+them with `os.environ['MY_PASSWORD']`. There is **no masking, sealing, or
+write-only env** — nothing stops sandboxed code reading an injected value from
+`os.environ`, `printenv` or `/proc/self/environ`. `env=` is the same thing
+without encryption at rest.
+
+**Modal provides no safety net for SPEC §17. The boundary is structural or it
+does not exist.** The platform-shaped primitive that _does_ help is
+`include_oidc_identity_token=True`, which injects a `MODAL_IDENTITY_TOKEN` JWT
+signed by `https://oidc.modal.com` carrying `workspace_id`, `environment_id`,
+`app_id`, `function_id` and `container_id`, verifiable against Modal's JWKS.
+The sandbox presents that; the control plane maps `container_id` → `project_id`
+**from its own records**, never from a project id the sandbox claims, and
+returns a short-lived project-scoped token.
+
+Two caveats: the identity token is still an env var the sandbox can read, and
+its claims identify the **container**, not the project. The docs state no TTL
+or refresh behaviour (the example token's `exp - iat` is 48h, which is not a
+documented guarantee) — so the control plane must set a short expiry on what it
+mints and check `exp`/`jti` replay rather than assume Modal rotates anything.
+
+This also wants a repo-level check: **no `Sandbox.create`/`exec` call site in
+sandboxd may pass a spendable credential in `secrets=` or `env=`.** That rule
+has to be enforced here, because Modal will not enforce it.
+
+### `cpu=1.0` is 2 vCPU, and a warm pool is the biggest line in §19
+
+Modal's CPU unit is a **physical core**, which its own pricing page labels
+"2 vCPU equivalent". SPEC's "2 vCPU and 4 GB" is therefore
+**`cpu=1.0, memory=4096`**, not `cpu=2.0` — writing `2.0` provisions 4
+vCPU-equivalent and raises CPU spend ~1.6× on the blended bill.
+
+A bare scalar is only a **request** (a floor) and permits bursting to
+request + 16 cores, which is billed; `cpu=(1.0, 1.0), memory=(4096, 4096)` is
+the hard cap. Billing is per-second on `max(request, actual)` wall-clock while
+the container is allocated, and **Sandboxes are billed at roughly 3× standard
+Function rates** ($0.00003942/core/s + $0.00000667/GiB/s, against $0.0000131
+and $0.00000222).
+
+That arithmetic: **a 2 vCPU / 4 GB sandbox is $0.238/hr — $5.71/day, ~$174/mo
+if left running.** Ten idle warm sandboxes cost ~$57/day doing nothing. This
+belongs in SPEC §19's margin model before a warm pool is sized, and it argues
+for measuring cold-create latency first — Modal has **no pool primitive at
+all** (its guide only "suggests keeping pools of Sandbox IDs"), so the pool is
+ours to build and ours to pay for either way.
+
+What is _not_ documented: whether the meter starts at `create` or at container
+start, and whether it stops at the `terminate()` call or at confirmed teardown.
+Model it conservatively as request-rate × wall-clock-alive and check it against
+a real invoice in phase 1.
+
+### Concurrency is plan-gated at 100, and throttling is a silent hang
+
+Starter ($0) is **100 containers**; Team ($250/mo fixed) is **5000**;
+Enterprise is custom. The "millions of concurrent sandboxes" in Modal's v2 blog
+is a platform capability claim, not an account entitlement — do not quote it in
+a capacity plan. 100 is a real phase-1 ceiling and it covers _every_ Modal
+container, so SPEC §14's Playwright/Lighthouse crawler shares it. **The $250/mo
+Team floor should be a fixed cost in §19 from day one, not a later upgrade.**
+
+Workspace operations are separately rate-limited to **200 calls/s** for a new
+account (burst ×5s), returning 429, with no self-service raise.
+
+The throttling behaviour is the sharp edge: **the Go client silently waits, and
+the wait is unbounded.** The server attaches an `RPCRetryPolicy` with
+`RetryAfterSecs`; the client's interceptor sleeps and retries with
+`// don't increment attempt; server-driven retries are unlimited`. The only
+bounds are `MODAL_MAX_THROTTLE_WAIT` (a nil pointer unless set) and the
+caller's context deadline. The default is the worst of both worlds — not an
+error, not a success, a hang.
+
+**Every Modal call needs a context deadline and an explicit `MaxThrottleWait`**,
+mapped to a user-visible amber "waiting on capacity" state per SPEC §18.
+Related: `codes.ResourceExhausted` is **not** in the Go SDK's retryable set and
+the Go SDK has **no typed error** for quota exhaustion, where Python has
+`modal.exception.ResourceExhaustedError`.
+
+### Cold start is ~0.5s at the median, and every other number is unmeasured
+
+The only published figures are medians: "Containers boot in about one second"
+and, on sandbox v2, "less than half a second at the median". There is **no
+published p90/p99**, no number for creating from a pre-baked image under load,
+and **no published timing at all for taking or restoring a snapshot** — the
+docs corpus contains only "optimized for performance" and "mounted instantly".
+The nearest hard evidence is the SDK's own `timeout=55` default and changelog
+1.4.3 noting support for "setting a `timeout=` longer than 55s when necessary",
+which is direct evidence snapshot creation **can exceed 55 seconds**.
+
+Modal's own product post makes the right point: boot time "is usually the
+smallest part of what your users actually wait through", and names `git clone`
+and `npm install` as the dominant Started→Ready cost. **Budget the sandbox as
+~0.5–1s of SPEC §9's p50 < 10s, not most of it.** The rest is the reconcile
+step, and that is ours.
+
+**Task 1.19 is that benchmark**, and its harness has landed in this branch:
+`services/sandboxd/src/halyard_sandboxd/bench/` measures p50/p95/p99 for
+`snapshot_filesystem`, `snapshot_directory`, `Sandbox.create` from each, and
+`mount_image` into a running sandbox, reporting each phase separately so the
+split between Modal's share and ours is visible. It has **not been run** — that
+needs a real workspace and spends money.
+
+Run it **before** tasks 1.3 and 1.5, not after: it depends on nothing from
+them, and its numbers are what should settle 1.3's snapshot-versus-Volume choice
+and 1.5's pool sizing. Do not commit to a resume-latency SLO before it exists.
+
+`readiness_probe` + `wait_until_ready()` are GA and are the right instrument:
+`modal.Probe.with_tcp(port)` on the dev server port makes "resumed" mean
+"actually usable", and the Created→Scheduled→Started→Ready lifecycle events
+give the console honest progress instead of a spinner.
+
+Region pinning works (`us`/`eu`/`ap` broad, `us-east` etc. narrow) but **narrow
+regions cost 1.75× and worsen cold start** — the two things a warm pool exists
+to fix — against 1.15× for broad. Prefer broad regions for the pool.
+
+### SPEC §5.1 rests on a fact that is no longer true
+
+> "Modal's SDK is Python. There is no supported Go SDK, so an all-Go backend
+> would need a Python sidecar for sandbox orchestration anyway."
+
+**This is now false.** `github.com/modal-labs/modal-client/go` v0.10.1 was
+published 2026-09-10, lives in the same first-party monorepo as the Python
+client, is documented on Modal's own docs site, and its `SandboxCreateParams`
+covers everything SPEC §9 needs — create, exec, snapshots, tunnels, volumes,
+readiness probes, network policy.
+
+The **conclusion** still holds, on grounds the spec did not cite:
+
+- The Go SDK is **pre-1.0 Beta** with breaking changes in 0.8.0, 0.9.0 and
+  0.10.0 — roughly every six to eight weeks.
+- **Functions remain Python-only** by Modal's own statement ("Python remains
+  the only supported Function runtime"), and SPEC §14's crawler is a Function.
+  Python does not leave the stack either way.
+- Python has a typed `ResourceExhaustedError` and a complete `.aio` surface;
+  Go has neither.
+
+So: keep `sandboxd` in Python, and **correct §5.1's stated reason** to "the
+Go SDK exists but is pre-1.0 and not at parity".
+
+**Resolved 2026-09-11 by the human: `sandboxd` stays Python — a Python sidecar
+for Modal, as specified.** §21 decision 2's resolution clause is corrected to
+cite the real grounds, and the decision now carries a re-examination trigger it
+did not have before: when `modal-client/go` reaches 1.0 and parity, the question
+is live again. SPEC §5.1's line is left as written and recorded as an erratum,
+because the SPEC is the contract. See `docs/open-questions.md` Q8.
+
+### The surface moves, so isolate it
+
+Every release from 1.4.0 to 1.5.5 changed something Sandbox-affecting: new
+filesystem API and OIDC tokens (1.4.0), readiness probes (1.4.1),
+`unmount_image` (1.4.2), inbound/outbound CIDR allowlists and snapshot images
+as root filesystems (1.4.3), named Images and domain allowlists and **two
+breaking TTL changes** (1.5.0), port-scoped connect tokens (1.5.1), blocking
+`reload_volumes` (1.5.2), the V2 backend (1.5.4), `Sandbox.logs` (1.5.5).
+Unreleased in `CHANGELOG_DEV.md`: `Sandbox.open/ls/mkdir/rm/watch` and
+`modal.file_io.FileIO` **removed**.
+
+1.5.5's own release note: "We are deprecating a number of undocumented APIs on
+object types... will be removed in version 1.6.0." That directly threatens
+every `_experimental_` call.
+
+Three rules follow:
+
+1. **Every `modal.*` call goes behind one adapter module** with its own
+   integration suite, so an SDK bump is one file to re-verify.
+2. **Run sandboxd's tests with `-W error::DeprecationWarning`** so removals
+   surface in CI, not production.
+3. **Set `MODAL_SANDBOX_V2` explicitly** rather than inheriting a default that
+   flips in 1.6.0 — and note the client **silently falls back to v1** if a GPU,
+   a network file system or `pty_info` is requested
+   (`modal/sandbox.py:703`). Never assume you got v2 because you asked. V2
+   sandboxes are also **not returned by `Sandbox.list()`**, so orphan
+   reconciliation must use stored ids, not enumeration.
+
+Also: do not pass `environment_name=`, `pty_info=` or `cidr_allowlist=` — all
+three are deprecated in 1.5.5 and slated for removal in 1.6.0.
+
+### One thing to tell the business, not the code
+
+**Snapshots are stored in the United States regardless of where the workload
+runs.** A user's whole project filesystem — source, any `.env` written to disk,
+build output — leaves its region the moment it is snapshotted. If Halyard ever
+claims EU data residency, snapshotting breaks that claim. The only mitigation on
+offer is an Alpha customer-supplied-encryption-key option
+(`_experimental_encryption_key` on `snapshot_directory`/`mount_image`). Flagged
+for SPEC §21.
+
+**Correction, because an earlier draft of this section conflated two features:**
+the "cannot pin a region" restriction belongs to **memory** snapshots
+(`_experimental_enable_snapshot=True`), alongside their same-instance-type
+restore and no-GPU limits. **Filesystem and directory snapshots place no
+restriction on `region`** — `_experimental_create`'s own docstring lists region
+placement and filesystem snapshots as both supported, and there is no
+client-side guard tying them together. Only the US-residency point applies to
+both. This matters practically: it means the warm pool can pin a broad region
+_and_ snapshot, which the merged version of the sentence appeared to forbid.
+
+### What this does not establish
+
+No Modal account was used and **no API call was made**. Everything above is
+read from the 1.5.5 wheel source, the Go SDK source and tags, Modal's
+documentation, changelogs and pricing page. Specifically still unmeasured and
+unconfirmed:
+
+- Snapshot create/restore latency. **The harness now exists** —
+  `services/sandboxd/src/halyard_sandboxd/bench/`, run via
+  `python -m halyard_sandboxd.bench` — and it has never been run: it needs a
+  real workspace, costs money, and is gated behind explicit opt-in. Task 1.19
+  is the run. Until then every latency statement in this section is a doc
+  quote, not a measurement.
+- That a blocked destination actually fails — assert it in 1.3's tests.
+- Tunnel URL instability across a snapshot cycle (inferred, not stated).
+- Whether Sandboxes count against the plan container cap (inferred from "Each
+  Modal Function or Sandbox container...", never stated outright).
+- Whether `Sandboxes.Create` is metered on the 200/s Function-call bucket.
+- Per-workspace Volume and concurrent-tunnel limits, and the undocumented
+  max CPU/memory per sandbox.
+
+Those six are in `docs/open-questions.md`. Under working agreement 4 an
+inference is not permission to size a capacity model against it.
+
+## SPEC §22 item 6 — `opencode`
+
+Verified 2026-09-11 for task 1.1, by **reading the pinned source** rather than
+the upstream project's documentation. The submodule is
+`agent/opencode` at `anomalyco/opencode`, tag `v1.18.30`, commit
+`3104c1428e`, released 2026-09-09. Everything below is a fact about that
+commit; a later tag must be re-checked.
+
+### The headline: none of the six patches looks necessary
+
+SPEC §11.2 lists six patches to a fork, each with a stated reason it "cannot be
+config". On the pinned tag, **all six have an upstream mechanism**. §11.1's own
+rule — "Anything achievable by configuration must not be a patch" — therefore
+points at not forking at all.
+
+| #      | §11.2's stated reason                                    | What the pinned tag actually has                                                                                                                                                         | Verdict                                       |
+| ------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| **P1** | "upstream doesn't expose them in the shape we need"      | `AssistantMessage.tokens` = `{ total, input, output, reasoning, cache: { write, read } }`, plus `cost`. That is the shape, exactly — **but the fields do not mean what they look like**. | **no patch — read the metering trap below**   |
+| **P2** | "must interrupt a running turn"                          | `POST /api/session/{sessionID}/interrupt` (v2), or legacy `POST /session/{sessionID}/abort`                                                                                              | **no patch**                                  |
+| **P3** | "the user's repo must not be able to relax the policy"   | `OPENCODE_PERMISSION` env var, merged **after every config file** — but it is **not sufficient alone**                                                                                   | **no patch — two env vars, one undocumented** |
+| **P4** | "every token must be metered and capped"                 | `provider.<id>.options.baseURL` in config                                                                                                                                                | **no patch**                                  |
+| **P5** | "`agentd` commits checkpoints at turn boundaries"        | Turn **start** is a blocking `chat.message` hook. Turn **end** has no blocking hook — only fire-and-forget events.                                                                       | **no patch — but P5 changes shape**           |
+| **P6** | "the UI contract must not drift with upstream refactors" | A documented OpenAPI contract with 94 event types                                                                                                                                        | **no patch — but see below**                  |
+
+### P3 needs two environment variables, and `OPENCODE_PERMISSION` alone is not enough
+
+`OPENCODE_PERMISSION` carries a JSON permission config, and
+`packages/opencode/src/config/config.ts:559` applies it **after** the entire
+merge chain: global config → `$OPENCODE_CONFIG` → project `opencode.json` files
+walking up to the worktree → `.opencode/` directories. Nothing the repository
+contains can merge over it, because nothing merges after it.
+
+**That is true and still insufficient.** Permission _rules_ are not evaluated by
+merge order — they are evaluated with `findLast`
+(`permission/index.ts:32` and `:210`), so the **last matching rule in a
+concatenated list wins**. And `Permission.merge` is literally
+`rulesets.flat()` (`permission/index.ts:200-202`). Follow what that means for a
+repo-defined agent:
+
+```ts
+// agent/agent.ts:277 — a config-defined agent starts from the user ruleset
+permission: Permission.merge(defaults, user) // `user` carries OPENCODE_PERMISSION
+// agent/agent.ts:293 — then its own rules are appended AFTER
+item.permission = Permission.merge(item.permission, Permission.fromConfig(value.permission ?? {}))
+```
+
+Those agents come from the repository. `ConfigAgent.load` globs
+`{agent,agents}/**/*.md` under each discovered `.opencode` directory
+(`config/agent.ts:13`) and merges the markdown frontmatter into `result.agent`
+(`config/config.ts:474`). **So a hostile repo ships
+`.opencode/agent/helper.md` with relaxed frontmatter permissions, its rules
+land last, `findLast` picks them, and the sandbox policy is gone.**
+
+`OPENCODE_DISABLE_PROJECT_CONFIG=1` is what actually closes this — but **not
+where you would expect, and the distinction matters for what to watch on an
+upstream bump.**
+
+`config.ts:420` guards only the upward `opencode.json` / `.jsonc` walk. The loop
+that loads the repository's agents, commands and plugins (`config.ts:438`,
+calling `ConfigAgent.load` at `:474`, `loadMode` at `:475` and
+`ConfigPlugin.load` at `:478`) sits **outside** that guard. Those are suppressed
+only **indirectly**, because `ConfigPaths.directories` (`paths.ts:27`) stops
+contributing the repository's `.opencode` paths when the flag is set, so the
+loop has nothing repo-controlled to iterate.
+
+The security conclusion is unchanged — with the flag set, all of it is
+suppressed — but **`paths.ts:27` carries more of §17's weight than
+`config.ts:420` does.** An upstream change that fed that loop from anywhere
+other than `ConfigPaths.directories` would re-open the escape with the flag
+still set, and it would not touch the line anyone would think to check. The pin
+test asserts the chain, not just the flag.
+
+The home-rooted `~/.opencode` scan is deliberately outside the guard
+(`paths.ts:34-38`, `start` and `stop` both `Global.Path.home`), so Halyard's own
+globally-installed supervisor plugin still loads. That is exactly the split we
+want.
+
+One route into that same loop is **not** guarded at all:
+`Flag.OPENCODE_CONFIG_DIR` is appended to the directory list unconditionally
+and `config.ts:439` treats it like a `.opencode` directory. That is a
+Halyard-side invariant rather than an upstream defect — **never point
+`OPENCODE_CONFIG_DIR` at anything the repository can write** — and it is
+recorded in the pin test's failure text.
+
+**Both variables are required, and one of them is undocumented.**
+`OPENCODE_DISABLE_PROJECT_CONFIG` does not appear in the CLI documentation's
+environment-variable table; it exists only in source. Under working agreement 4
+that goes to `docs/open-questions.md` and gets pinned by a test, so an upstream
+rename fails CI instead of silently opening the sandbox.
+
+Two further caveats, stated rather than assumed away:
+
+- `OPENCODE_PERMISSION` is applied with `mergeDeep`, not a replace. A repo can
+  still add permission keys our policy does not mention, so the policy needs a
+  catch-all deny rather than an enumeration of what is forbidden.
+- §11.2 names `AGENTS.md` alongside repo config as untrusted input. `AGENTS.md`
+  carries **instructions**, not permissions — it cannot alter the permission
+  config, and no patch would stop it influencing the model's behaviour. That is
+  prompt injection, which is a different and unsolved problem; conflating the
+  two would make P3 look like it solves more than it does.
+
+### A correction: `permission.ask` is declared but never fires
+
+An earlier reading of this section claimed `permission.ask` gave a second,
+independent lever for P3. **That was wrong, and it is worth recording as a trap
+rather than quietly deleting.** The hook is declared in the public plugin types
+with a vetoing signature:
+
+```ts
+// packages/plugin/src/index.ts:261
+"permission.ask"?: (input: Permission, output: { status: "ask" | "deny" | "allow" }) => Promise<void>
+```
+
+Hooks are dispatched by exact string literal through `Plugin.trigger(name, …)`,
+and enumerating every dispatch site in `packages/opencode/src` yields:
+`chat.headers`, `chat.message`, `chat.params`, `command.execute.before`,
+`shell.env`, `tool.definition`, `tool.execute.after`, `tool.execute.before`,
+and four `experimental.*`. **`permission.ask` is not among them — zero call
+sites.** Every other match in the tree is `permission.asked`, the past-tense
+observe-only _event_.
+
+Reading the type definitions alone would produce a permission veto that never
+fires and a test suite that never notices. The working interception point is
+**`tool.execute.before`, which denies by throwing** — documented, dispatched,
+and awaited in sequence before the tool runs. That is the right second layer
+under §17, and unlike config precedence it does not depend on merge order at
+all.
+
+### The repo can execute arbitrary code, which §11.3 does not contemplate
+
+§11.3 warns that the repository's `AGENTS.md` is untrusted input. The sharper
+edge is that **opencode loads and runs plugins from the repository itself**.
+`ConfigPlugin.load(dir)` (`config.ts:478`) auto-discovers `.opencode/plugin/`,
+and the repo's `opencode.json` can name npm packages in its `"plugin"` array.
+Plugin code receives `$` — a Bun shell handle — and `client`, the fully
+authenticated server SDK. That is arbitrary code execution **entirely outside
+the tool-permission system**: no permission rule is consulted, because plugins
+are not tools.
+
+So `OPENCODE_DISABLE_PROJECT_CONFIG=1` is load-bearing for **§17**, not merely
+for P3. Without it, opening a user's repository executes that repository's
+JavaScript at startup.
+
+`OPENCODE_PURE` is not the answer here: it disables **all** external plugins,
+including Halyard's own supervisor plugin. It remains useful for a sandbox
+image that must not reach npm at runtime, but it cannot be the policy
+mechanism.
+
+### The metering trap in P1's numbers
+
+`tokens.input` is **not** the provider's input count. `session/session.ts:364`:
+
+```ts
+const adjustedInputTokens = safe(inputTokens - cacheReadInputTokens - cacheWriteInputTokens)
+// …
+input: adjustedInputTokens,
+output: safe(outputTokens - reasoningTokens),
+reasoning: reasoningTokens,
+cache: { read: cacheReadInputTokens, write: cacheWriteInputTokens },
+```
+
+Both headline fields are already net of something. For §19's ledger:
+
+- **billable input = `input + cache.read + cache.write`**
+- **billable output = `output + reasoning`**
+
+`total` is present too, and is **not** the sum of those fields — it is the
+provider's own `usage.totalTokens`, passed through unadjusted. Do not reconcile
+one against the other; pick the components and sum them yourself.
+
+Treating `tokens.input` as the provider's input count under-bills by the entire
+cache volume — which on a cached agent loop is the _majority_ of input tokens.
+opencode also normalises cache-write across providers that report it only in
+metadata (Anthropic, Vertex, Bedrock), so the field is trustworthy once summed
+correctly. This belongs in task 1.13's `aigw` accounting tests as an explicit
+assertion, not as a comment.
+
+### P5 splits: turn start can block, turn end cannot
+
+`chat.message` is genuinely awaited — `Plugin.trigger` runs it as
+`yield* Effect.promise(async () => fn(input, output))` — so a plugin **can**
+hold a turn open at the start while a checkpoint commits. There is no
+equivalent at the end: `session.idle` and `session.status` are events, and the
+plugin `event` hook is dispatched fire-and-forget. **A plugin cannot hold a
+turn open to swap a write lease.**
+
+So P5 becomes zero patches but a different design: `onTurnStart` is a blocking
+`chat.message` hook; `onTurnEnd` is `agentd` serialising on the event stream —
+it waits for `session.idle`, commits, swaps the lease, and only then submits
+the next prompt. **That makes an invariant explicit for task 2.8: if anything
+other than `agentd` can POST a prompt, the lease swap races.**
+
+One caveat for §11.4, which requires flushing dirty human edits "before the
+agent reads files": `chat.message` fires _after_ the message's file and
+`@`-mention parts have been resolved and read from disk. Tool-driven reads
+(`read`/`grep`/`glob`) all happen after the hook, so the main data-loss
+scenario is covered — but explicitly attached files are snapshotted
+pre-checkpoint. If that matters, `agentd` should checkpoint when it accepts the
+prompt, before forwarding it.
+
+### opencode already checkpoints, which overlaps §12.1
+
+Worth knowing before building `gitd` checkpoints from scratch: opencode
+snapshots each turn into a **separate git directory**
+(`<data>/snapshot/<projectID>/<hash(worktree)>`), driven as
+`git --git-dir <that> --work-tree <worktree>`, so it never writes to the user's
+own `.git`. Each assistant message carries `snapshot: { start, end, files }`,
+and `POST /session/{id}/revert` and `/unrevert` exist.
+
+This does **not** replace §12's `refs/checkpoints/<session>/<turn>` naming or
+the semantic-commit layer, and §12's checkpoints must live in `gitd` where the
+control plane can reach them. But it removes the need to re-derive per-turn file
+diffs, and task 1.12 should evaluate reusing the `snapshot.files` list rather
+than recomputing it.
+
+### P6 is "no patch" for a different reason
+
+The others are "upstream already does this". P6 is "patching upstream is the
+wrong fix". The stated goal — the UI contract must not drift — is real, but a
+patch that makes opencode emit our event shape has to be rebased forever,
+while an **adapter in `agentd`** mapping 94 documented event types onto §7.2's
+contract does not. The adapter is also where the mapping is testable against
+`agent-events.schema.json`, which a patch inside a vendored fork is not.
+
+The event vocabulary maps cleanly: `EventSessionNextPromptAdmitted` → turn
+started, `EventSessionNextTextDelta` → message delta,
+`EventSessionNextToolCalled`/`ToolSuccess`/`ToolFailed` → tool started/finished,
+`EventSessionError` → error, `EventSessionIdle` → turn finished.
+
+### What this does not establish
+
+**The source was read, not run.** Each verdict is a reading of the pinned
+commit, and reading tells you what the code intends rather than what it does.
+Before a patch is formally struck off, task 1.7 or 1.8 should assert the
+behaviour against a running `opencode serve`:
+
+- that `OPENCODE_PERMISSION` genuinely survives a hostile `opencode.json` and a
+  hostile `.opencode/opencode.json` in the repository;
+- that `interrupt` stops a turn mid-stream rather than after the current step;
+- that `tokens` is populated on the events `agentd` actually consumes, not only
+  on a message fetched afterwards;
+- that `baseURL` routes **every** provider call, including any model-listing or
+  auth probe made at startup.
+
+- that a hostile fixture repo containing `.opencode/opencode.json`,
+  `.opencode/agent/evil.md` **and** `.opencode/plugin/evil.ts` cannot relax the
+  policy and cannot get its plugin executed, with both env vars set.
+
+Until those exist, the honest status is "no patch appears necessary", not "no
+patch is necessary".
+
+**Resolved 2026-09-11 by the human for P3 specifically: use both environment
+variables, and pin the undocumented one.**
+`tests/contracts/test_opencode_upstream_contract.py` asserts every mechanism
+above still exists in the pinned source, so an upstream rename fails CI rather
+than silently opening the sandbox. That pins the **mechanism**; tasks 1.7/1.8
+still own the behavioural assertion against a running server. See
+`docs/open-questions.md` Q9. The P3 precedence chain in particular — `OPENCODE_PERMISSION`
+merged last → remeda source-wins → `findLast` evaluation → agent rules appended
+after → project config suppressed by `OPENCODE_DISABLE_PROJECT_CONFIG` — is a
+five-step inference. Each step is individually confirmed in source; the chain has
+not been executed end to end.
+
+### Why not fork, quantified
+
+§11.1 already says configuration beats patching. The pinned tag puts numbers on
+it. opencode ships roughly **one release every 1.4 days** — 45 releases between
+v1.17.16 (2026-07-09) and v1.18.30 (2026-09-09). Over the last 90 days the exact
+files the six patches would touch churned hard: `session/prompt.ts` 54 commits,
+`session/session.ts` 36, `session/tools.ts` 33, `permission/index.ts` 27,
+`config/config.ts` 21. The codebase is also mid-migration to Effect-TS, so
+patches would sit on top of ongoing structural refactors.
+
+By contrast the plugin contract — `packages/plugin/src/index.ts` — has not
+changed since 2026-06-01, and its recent history is purely additive. **The stable
+surface is the one we were told to patch around.** Rebasing six patches across
+~30 releases a month, any one of which is security-relevant, is a recurring
+multi-hour task with a real chance of silently mis-applying the policy patch.
+
+### The upstream moved
+
+`github.com/sst/opencode` now 301-redirects to `github.com/anomalyco/opencode`
+(same team, rebranded from SST to Anomaly Innovations), and the default branch is
+**`dev`**, not `main`. Checked rather than assumed: `.gitmodules` already points
+at the `anomalyco` path, and no §-citation in this repository names a GitHub URL
+— so **nothing needs renaming**. This note exists only so the rebrand is not
+rediscovered as a surprise. CI tooling that tracks upstream should target `dev`
+semantics.
+
+### Other facts about the pinned tag
+
+- **Server API**: 162 paths under an OpenAPI 3.1 document at
+  `packages/sdk/openapi.json`, which is the contract `agentd` should generate a
+  client from rather than hand-writing one.
+- **Server auth**: `OPENCODE_SERVER_USERNAME` / `OPENCODE_SERVER_PASSWORD`,
+  so the loopback port `agentd` talks to need not be unauthenticated.
+- **MCP**: `mcp` is a first-class config key with two transports.
+  `McpLocalConfig` spawns a command over stdio; `McpRemoteConfig` takes a `url`
+  and an arbitrary `headers` map — which is precisely what §13 needs, since the
+  sandbox connects to the control plane's MCP server over HTTP carrying its
+  session JWT as a bearer token. No patch, and no stdio bridge.
+- **Plugin API**: `packages/plugin` exports a `Hooks` interface. The hooks
+  that are actually **dispatched** are `chat.headers`, `chat.message`,
+  `chat.params`, `command.execute.before`, `shell.env`, `tool.definition`,
+  `tool.execute.before`/`after` and four `experimental.*` — see the
+  `permission.ask` correction above before trusting the type definitions.
+  Halyard ships **one** supervisor plugin, installed globally in the sandbox
+  image at `~/.config/opencode/plugin/` so it survives
+  `OPENCODE_DISABLE_PROJECT_CONFIG`.
+- **`chat.headers` is relevant to P4** and was not examined here. Re-check it
+  before assuming P4 needs the `baseURL` route at all — task 1.9 owns that.
+- **`OPENCODE_PURE`** skips external plugin discovery and installation — useful
+  for a sandbox image that must not reach npm at runtime, given §9's
+  deny-by-default egress.
 
 ## Local toolchain
 
