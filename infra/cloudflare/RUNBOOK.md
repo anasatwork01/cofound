@@ -93,7 +93,28 @@ debug it as an intermittent bug later.
 
 ## Part 2 — the Go services (blocked on §21 decision 1)
 
-### The image is ready and host-agnostic
+### The images are built and published
+
+`.github/workflows/publish-images.yml` pushes all four services to GHCR on every
+merge to `main`:
+
+```
+ghcr.io/<owner>/halyard-{api,gitd,aigw,mcp}:<commit-sha>
+ghcr.io/<owner>/halyard-{api,gitd,aigw,mcp}:main
+```
+
+Tagged by commit, plus a moving `main`. **No `latest`** — a tag that silently
+changes under a host is how a rollback stops meaning anything.
+
+This needed no decision and no external account: it authenticates with the
+built-in `GITHUB_TOKEN`, and every candidate host in SPEC §3.5 consumes an OCI
+image. `linux/amd64` only for now; adding `linux/arm64` is a one-line change
+that roughly doubles build time, not worth paying before a host exists to use
+it. The workflow re-runs the start-and-validate assertion against the _published_
+tag, because a published image that will not start is worse than a failed build
+— a host will pull it and crash-loop.
+
+### Building one locally
 
 ```bash
 docker build -f infra/docker/Dockerfile \

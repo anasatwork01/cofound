@@ -1,0 +1,123 @@
+# Publishes the Go services' container images to GHCR. Task 0.12.
+#
+# This is the half of the service deployment story that does NOT depend on
+# SPEC §21 decision 1. Every candidate host in SPEC §3.5 — Cloudflare
+# Containers, Fly.io, Railway, Cloud Run — consumes an OCI image, so the image
+# can be built and published before the host is chosen, and whichever wins
+# pulls from here.
+#
+# What still waits on that decision is the deploy step: pointing a host at
+# these tags. See `infra/cloudflare/RUNBOOK.md`.
+#
+# Unlike `deploy-console.yml`, this needs no external account. It authenticates
+# with the built-in GITHUB_TOKEN, so it works the moment it lands.
+name: publish images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/**"
+      - "packages/chassis/**"
+      - "packages/db/**"
+      - "packages/schema/gen/go/**"
+      - "infra/docker/**"
+      - "go.work"
+      - ".github/workflows/publish-images.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: publish-images-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      # Publish every service even if one fails: a broken `mcp` should not
+      # withhold a fixed `api`.
+      fail-fast: false
+      matrix:
+        service: [api, gitd, aigw, mcp]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # `git describe` needs tags and history to produce a version rather
+          # than falling back to "dev" on every build.
+          fetch-depth: 0
+
+      - name: Derive version and commit
+        id: v
+        run: |
+          echo "version=$(git describe --tags --always --dirty 2>/dev/null || echo dev)" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: infra/docker/Dockerfile
+          # linux/amd64 only, deliberately. Every candidate host runs amd64;
+          # Fly.io also offers arm64 machines, and adding `linux/arm64` here is
+          # a one-line change that roughly doubles build time. Not worth paying
+          # for before a host exists to consume it.
+          platforms: linux/amd64
+          build-args: |
+            SERVICE=${{ matrix.service }}
+            VERSION=${{ steps.v.outputs.version }}
+            COMMIT=${{ steps.v.outputs.commit }}
+          # Immutable by commit, plus a moving `main`. No `latest`: a tag that
+          # silently changes under a host is how a rollback stops meaning
+          # anything.
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/halyard-${{ matrix.service }}:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/halyard-${{ matrix.service }}:main
+          push: true
+          cache-from: type=gha,scope=image-${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=image-${{ matrix.service }}
+
+      # The same assertion the `service image` CI job makes on every PR, run
+      # again against the published tag. A published image that will not start
+      # is worse than a failed build, because a host will happily pull it and
+      # crash-loop.
+      - name: The published image starts and validates its configuration
+        run: |
+          set +e
+          out="$(docker run --rm -e HALYARD_ENV=development \
+            "ghcr.io/${{ github.repository_owner }}/halyard-${{ matrix.service }}:${{ github.sha }}" 2>&1)"
+          code=$?
+          set -e
+          echo "$out"
+          # api is the only service with required configuration today; the
+          # others start and listen. Both outcomes are fine — a crash is not.
+          if [ "$code" -ne 0 ]; then
+            grep -q "configuration is invalid" <<<"$out" || {
+              echo "::error::exited non-zero without the chassis config-validation message"
+              exit 1
+            }
+          fi
+
+      - name: Summary
+        run: |
+          {
+            echo "### halyard-${{ matrix.service }}"
+            echo
+            echo '```'
+            echo "ghcr.io/${{ github.repository_owner }}/halyard-${{ matrix.service }}:${{ github.sha }}"
+            echo '```'
+            echo
+            echo "version \`${{ steps.v.outputs.version }}\` · commit \`${{ steps.v.outputs.commit }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
