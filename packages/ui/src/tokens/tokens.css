@@ -1,0 +1,205 @@
+/*
+ * tokens.css - the semantic layer. Task 0.11. SPEC 3.1, SPEC 18.
+ *
+ * palette.css holds raw values and is the only file in the repository allowed
+ * to contain a colour literal. This file gives those values meaning and hands
+ * them to Tailwind v4 through `@theme`, which turns `--color-agent` into
+ * `bg-agent` / `text-agent` / `border-agent`. That mechanism is the reason a
+ * component never has to name a colour: it names a role.
+ *
+ * ---------------------------------------------------------------------------
+ * HOW TO WIRE THIS UP
+ *
+ * The app's entry stylesheet must import both, in this order:
+ *
+ *     @import "tailwindcss";
+ *     @import "@halyard/ui/tokens.css";
+ *
+ * This file cannot import Tailwind itself, and that is not an oversight.
+ * `tailwindcss` is a devDependency of apps/console; under pnpm's strict
+ * node_modules layout it is not resolvable from packages/ui, and Tailwind
+ * resolves a nested `@import` relative to the file that wrote it:
+ *
+ *     Can't resolve 'tailwindcss' in 'packages/ui/src/tokens'
+ *
+ * Making it resolvable means adding a dependency to packages/ui, which task
+ * 0.11's brief rules out. The wiring is asserted instead, by
+ * `tests/console/tokens-wiring.test.ts`.
+ *
+ * The palette import below is relative, so it resolves fine.
+ *
+ * ---------------------------------------------------------------------------
+ * THE THREE STATES (SPEC 18)
+ *
+ *   agent    violet   an agent-owned action is happening or is offered
+ *   waiting  amber    waiting on you
+ *   live     teal     live
+ *
+ * "Used identically for the ads approval, incomplete Stripe onboarding, and a
+ * DNS-pending domain - one learned pattern, not three." So the three share a
+ * shape as well as a structure:
+ *
+ *   solid emphasis   bg-<state>       + text-<state>-ink     (>= 4.5:1)
+ *   subtle badge     bg-<state>-soft  + text-ink             (>= 4.5:1)
+ *                    or text-<state>, which also clears 4.5:1 on its own tint
+ *
+ * Colour is never the only signal. SPEC 18 requires a colour-blind user to
+ * tell the three apart, so every state carries a label and a glyph too; that
+ * is the components' job, and `tests/console/contrast.test.ts` only guarantees
+ * the colour half is legible.
+ *
+ * ---------------------------------------------------------------------------
+ * WHAT IS DELIBERATELY NOT HERE
+ *
+ *   - No fourth accent. `--color-focus` is the ink colour, drawn outside the
+ *     control with an offset, so a focus ring can never be misread as a state.
+ *   - No `tailwind.config.js`. Tailwind v4 is CSS-first; a config file would
+ *     be a second place to look.
+ *   - `--color-*: initial` clears Tailwind's built-in palette, so a utility
+ *     naming one of Tailwind's own colours resolves to nothing at all. The
+ *     quarantine test says so loudly; this makes it true quietly as well.
+ *   - The type and radius scales are closed for the same reason. If you need a
+ *     step past `--text-3xl`, add it here on the same ratio rather than
+ *     reaching for a Tailwind default that is not on our scale.
+ */
+
+@import "./palette.css";
+
+/* packages/ui lives in node_modules from the app's point of view, and Tailwind
+   skips node_modules when it scans for class names. Without this, every class
+   used by a shared component would be silently dropped from the build. */
+@source "../";
+
+@theme static {
+  /* Clear Tailwind's built-ins: only the roles below exist. */
+  --color-*: initial;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  --color-inherit: inherit;
+
+  /* -ink is the foreground that goes ON that colour.
+     -soft is the tinted background for a subtle badge. */
+  --color-agent: var(--raw-violet-600);
+  --color-agent-ink: var(--raw-grey-0);
+  --color-agent-soft: var(--raw-violet-50);
+
+  --color-waiting: var(--raw-amber-600);
+  --color-waiting-ink: var(--raw-grey-0);
+  --color-waiting-soft: var(--raw-amber-50);
+
+  --color-live: var(--raw-teal-600);
+  --color-live-ink: var(--raw-grey-0);
+  --color-live-soft: var(--raw-teal-50);
+
+  /* surface is the page ground; raised is a card sitting on it; sunken is a
+     well - an input, a code block, the credit gauge track. */
+  --color-surface: var(--raw-grey-50);
+  --color-surface-raised: var(--raw-grey-0);
+  --color-surface-sunken: var(--raw-grey-100);
+
+  --color-ink: var(--raw-grey-900);
+  --color-ink-muted: var(--raw-grey-600);
+
+  --color-border: var(--raw-grey-200);
+
+  /* The boundary that has to be SEEN: a form control's edge, where the edge is
+     the only thing saying a control is there, and a notice that has to be
+     found. `--color-border` is a divider or a card edge, where the boundary is
+     decoration and the content carries the meaning; it is 1.45:1 on a white
+     field, which WCAG 2.2 SC 1.4.11 does not allow for the first job and does
+     not ask about for the second. Additive, so the mockup swap is still one
+     file: a new role here and a new raw value there. */
+  --color-border-strong: var(--raw-grey-500);
+
+  /* Deliberately the ink colour, not a fourth hue. See the note above. */
+  --color-focus: var(--raw-grey-900);
+
+  /* No web font. Without the mockup there is no approved typeface, and
+     picking a distinctive one now is exactly the identity that would have to
+     be unpicked later. */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* A modular scale: base 1rem, ratio 2^(1/5), so the scale doubles every five
+     steps. xs is 12.1px - small enough for SPEC 18's "SHAs demoted to small
+     monospace", large enough to still be read. */
+  --text-*: initial;
+  --text-xs: 0.758rem;
+  --text-xs--line-height: 1.45;
+  --text-sm: 0.871rem;
+  --text-sm--line-height: 1.45;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5;
+  --text-lg: 1.149rem;
+  --text-lg--line-height: 1.4;
+  --text-xl: 1.32rem;
+  --text-xl--line-height: 1.35;
+  --text-2xl: 1.516rem;
+  --text-2xl--line-height: 1.25;
+  --text-3xl: 1.741rem;
+  --text-3xl--line-height: 1.2;
+
+  --radius-*: initial;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+
+  /* Tailwind's dynamic spacing multiplier. Set to the same 4px grid as
+     --space-* below, so `p-4` and `var(--space-4)` are the same length and
+     can never drift apart. */
+  --spacing: 0.25rem;
+}
+
+/*
+ * --space-* is not one of Tailwind's theme namespaces, so these generate no
+ * utilities and live in a plain :root rather than in @theme. Use the Tailwind
+ * utility (`p-4`, `gap-2`) in markup and `var(--space-4)` in hand-written CSS;
+ * they are the same 4px grid.
+ */
+:root {
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-7: 1.75rem;
+  --space-8: 2rem;
+}
+
+/*
+ * SPEC 18 requires a visible focus ring throughout. Drawn outside the control
+ * with a gap, so it stays visible on a solid state fill as much as on a
+ * surface. In @layer base so an app stylesheet can restate it without a
+ * specificity fight - but the ring exists whether or not the app remembers.
+ *
+ * This file deliberately does not style `body`. The page ground is the app's
+ * decision; the token layer only has to make the roles available.
+ */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+}
+
+/*
+ * SPEC 18: reduced motion respected. Unlayered and !important on purpose -
+ * this has to beat utilities, component CSS and anything a library ships,
+ * and a user who asks for less motion is not asking for a negotiation.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+
+  html {
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,82 @@
+/*
+ * palette.css - raw colour values. PROVISIONAL.
+ * Task 0.11. SPEC 3.1, SPEC 18.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THESE VALUES ARE PROVISIONAL
+ *
+ * SPEC 3.1 says the design system is defined by the approved mockup: "read
+ * docs/mockup.html and extract tokens from it rather than inventing new ones."
+ * THAT FILE DOES NOT EXIST. It was never supplied and is not recoverable
+ * (docs/open-questions.md, Q0); committing it is a human deliverable, task L.5.
+ *
+ * So SPEC 18 gives us the STRUCTURE - three semantic states, 4.5:1 minimum -
+ * and this file supplies numbers to stand in until the mockup lands. They are
+ * deliberately quiet. A characteristic palette would be harder to replace than
+ * a plain one, because identity leaks out of colour and into density, type and
+ * motion, and then the "one file" swap stops being one file.
+ *
+ * ---------------------------------------------------------------------------
+ * THE QUARANTINE
+ *
+ * This is the ONLY file in the repository permitted to contain a colour
+ * literal. Everything else - components, routes, app CSS - refers to the
+ * semantic names in tokens.css, which refer to the raw names here.
+ *
+ * When the mockup lands: replace the values in this file and nothing else.
+ * If a new value is needed, add a raw name here and map it in tokens.css; do
+ * not write the colour where it is used.
+ *
+ * The quarantine is not a convention, it is checked:
+ *   tests/console/tokens-quarantine.test.ts  fails the build if any other file
+ *                                            contains a colour literal.
+ *   tests/console/contrast.test.ts           fails the build if any pair drops
+ *                                            below SPEC 18's 4.5:1 floor, so
+ *                                            the swap is checked, not trusted.
+ *
+ * ---------------------------------------------------------------------------
+ * HOW THESE NUMBERS WERE CHOSEN
+ *
+ * Generated in OKLCH, then written as sRGB hex so the values are exact and
+ * diffable. Two rules, which is the whole of the "design" here:
+ *
+ *   - the three state colours sit at identical lightness (L 0.480) and their
+ *     tints at identical lightness (L 0.951), so violet, amber and teal read
+ *     as one pattern at three hues rather than as three unrelated colours.
+ *     SPEC 18: "one learned pattern, not three".
+ *   - chroma is kept low (0.075-0.12) and the greys carry a faint cool cast
+ *     (hue ~253) rather than a warm one.
+ *
+ * Every pair that carries text clears 4.5:1, and a boundary that is the only
+ * thing identifying a control clears WCAG 2.2 SC 1.4.11's 3:1; the ratios are
+ * in tests/console/contrast.test.ts, which recomputes them rather than quoting
+ * them.
+ */
+
+:root {
+  /* Agent-owned action. SPEC 18: violet. */
+  --raw-violet-600: #59519d; /* L 0.480  C 0.119  H 286 */
+  --raw-violet-50: #ededfd; /* L 0.951  C 0.021  H 286 */
+
+  /* Waiting on you. SPEC 18: amber. Dark enough to carry white text, which is
+     what keeps the solid-fill treatment identical across all three states. */
+  --raw-amber-600: #81520a; /* L 0.480  C 0.100  H  70 */
+  --raw-amber-50: #f9eddf; /* L 0.952  C 0.023  H  72 */
+
+  /* Live. SPEC 18: teal. */
+  --raw-teal-600: #1b6b65; /* L 0.480  C 0.075  H 188 */
+  --raw-teal-50: #dff4f1; /* L 0.951  C 0.022  H 186 */
+
+  /* Neutrals. 0 is white, 900 is ink; the numbers track lightness. */
+  --raw-grey-0: #ffffff; /* L 1.000 */
+  --raw-grey-50: #f2f5f8; /* L 0.969 */
+  --raw-grey-100: #e9ebee; /* L 0.939 */
+  --raw-grey-200: #d2d7dd; /* L 0.877 */
+  /* Dark enough to be the boundary that IDENTIFIES a control: 3.94:1 on a
+     white field, 3.60:1 on the page, 3.30:1 in a well, so it clears WCAG 2.2
+     SC 1.4.11's 3:1 against every surface a control can sit on. Light enough
+     to still read as an edge rather than as text. */
+  --raw-grey-500: #7a8189; /* L 0.600  C 0.014  H 253 */
+  --raw-grey-600: #5c646e; /* L 0.500 */
+  --raw-grey-900: #191d23; /* L 0.229 */
+}

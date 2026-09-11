@@ -3,7 +3,17 @@
   "version": "0.0.0",
   "private": true,
   "description": "Shared React components for the console",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tokens.css": "./src/tokens/tokens.css",
+    "./palette.css": "./src/tokens/palette.css"
+  },
   "scripts": {
-    "typecheck": "echo \"not implemented yet\""
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   }
 }

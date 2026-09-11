@@ -1,0 +1,41 @@
+/**
+ * The console's entry stylesheet.
+ *
+ * Tailwind first, then the token layer. The token layer cannot import Tailwind
+ * itself (pnpm's layout does not expose it to packages/ui) and Tailwind's own
+ * layer order is declared by its own import, so the order below matters.
+ * `tests/console/tokens-wiring.test.ts` asserts it, because getting it wrong
+ * fails silently — a console with no `@theme` and therefore no `bg-agent`.
+ *
+ * SPEC §3.1 says the design system comes from the approved mockup,
+ * `docs/mockup.html`. That file has never been supplied
+ * (docs/open-questions.md Q0, task L.5), so the values behind these names are
+ * provisional and live in exactly one file — `packages/ui/src/tokens/
+ * palette.css` — which is what keeps the eventual swap a one-file job.
+ */
+@import "tailwindcss";
+@import "@halyard/ui/tokens.css";
+
+/**
+ * Deliberately short.
+ *
+ * The visible focus ring and the reduced-motion rules SPEC §18 requires are
+ * declared once, in the token layer, and apply whether or not an app remembers
+ * to ask for them. Restating them here would be a second place to change them
+ * and a first place for them to drift. What is left is the page ground, which
+ * the token layer deliberately leaves to the app.
+ */
+@layer base {
+  html {
+    /* The provisional palette is light only. Dark is a second block in
+       palette.css plus `light dark` here, and no component change at all. */
+    color-scheme: light;
+  }
+
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "halyard-console",
+  "main": ".open-next/worker.js",
+
+  // workerd's latest published build sets the ceiling on how new this can be.
+  // The adapter warns at build time once this is roughly six months old, so it
+  // needs a refresh around March 2027.
+  "compatibility_date": "2026-09-10",
+
+  // `nodejs_compat` is implied by a compatibility_date >= 2026-08-04, but is
+  // stated anyway: the table of which node: modules are real, stubbed or
+  // polyfilled is documented against the flag being enabled.
+  //
+  // `global_fetch_strictly_public` is a SECURITY flag, not a functional one.
+  // Without it, a server-side fetch from this Worker to one of Halyard's own
+  // zones is routed straight to the origin, ignoring any Worker mapped to that
+  // URL and bypassing Cloudflare security settings — so it would skip the WAF
+  // and any Access policy in front of the API. See SPEC §17 and
+  // docs/verified.md, SPEC §22 item 1. Do not remove it as "unnecessary".
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".open-next/assets",
+  },
+
+  "observability": {
+    "enabled": true,
+  },
+}

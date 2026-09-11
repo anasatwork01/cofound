@@ -4,6 +4,15 @@
   "private": true,
   "description": "JSON Schema + OpenAPI: the single source of truth for all cross-language types",
   "scripts": {
-    "typecheck": "echo \"not implemented yet\""
+    "typecheck": "tsc --noEmit"
+  },
+  "type": "module",
+  "exports": {
+    "./common": "./gen/typescript/common.ts",
+    "./api-v1": "./gen/typescript/api-v1.ts",
+    "./agent-events": "./gen/typescript/agent-events.ts",
+    "./capability-manifest": "./gen/typescript/capability-manifest.ts",
+    "./meters": "./gen/typescript/meters.ts",
+    "./sandboxd-api": "./gen/typescript/sandboxd-api.ts"
   }
 }

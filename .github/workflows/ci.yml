@@ -95,6 +95,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: make lint-js
+      - run: make typecheck-js
+      - run: make test-js
+      # The console shell is only a shell if it builds. Task 0.12 deploys it;
+      # this is what stops 0.12 discovering a broken build.
+      - run: pnpm --filter @halyard/console build
 
   schema:
     name: schema drift

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  /*
+   * These tests belong to no package, so `pnpm -r --filter '@halyard/*'
+   * typecheck` never saw them: the guards that hold the token contract together
+   * were the only TypeScript in the repository nothing typechecked. The root
+   * `typecheck` script runs this project before the workspace one.
+   *
+   * Same strictness as everything else — `tsconfig.base.json` is the single
+   * source for that — plus `types`, because there is no package here to pull
+   * @types in by dependency.
+   */
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"]
+}
