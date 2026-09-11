@@ -93,15 +93,14 @@ jobs:
   js:
     name: js
     runs-on: ubuntu-latest
-    env:
-      # No SENTRYCLI_SKIP_DOWNLOAD here, deliberately. It looks like it would
-      # save the 35 MB `@sentry/cli` binary, and it does not: that binary
-      # arrives as the `@sentry/cli-linux-x64` optionalDependency, which this
-      # lockfile pins, and `@sentry/cli`'s postinstall exits 0 the moment that
-      # resolves (scripts/install.js:325-327). The variable only disables the
-      # FALLBACK download — so setting it would buy nothing and remove the one
-      # recovery path for a missing binary. Trimming the 35 MB is a pnpm
-      # optional-dependency question, and needs its own measurement.
+    # No SENTRYCLI_SKIP_DOWNLOAD here, deliberately. It looks like it would save
+    # the 35 MB `@sentry/cli` binary, and it does not: that binary arrives as the
+    # `@sentry/cli-linux-x64` optionalDependency, which this lockfile pins, and
+    # `@sentry/cli`'s postinstall exits 0 the moment that resolves
+    # (scripts/install.js:325-327). The variable only disables the FALLBACK
+    # download — so setting it would buy nothing and remove the one recovery
+    # path for a missing binary. Trimming the 35 MB is a pnpm
+    # optional-dependency question, and needs its own measurement.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: tv
