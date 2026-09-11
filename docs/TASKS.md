@@ -55,7 +55,7 @@ turn produces a checkpoint, time-to-first-token p95 < 3s._
 
 | ID   | Task                                                                                                                                                       | Depends on    | Status |
 | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ------ |
-| 1.1  | Verify §22 items 5 and 6 (Modal API + snapshots + tunnels; opencode hook surface). Decide which of P1-P6 are still needed                                  | 0.1           | todo   |
+| 1.1  | Verify §22 items 5 and 6 (Modal API + snapshots + tunnels; opencode hook surface). Decide which of P1-P6 are still needed                                  | 0.1           | done   |
 | 1.2  | Sandbox base image: Dockerfile + Modal image definition, Node/pnpm, git, ripgrep, built opencode, `agentd`                                                 | 1.1           | todo   |
 | 1.3  | `sandboxd`: define `sandboxd.openapi.yaml` first, then create/resume/stop, Modal volume mount, filesystem snapshot                                         | 1.2, 0.3, 0.5 | todo   |
 | 1.4  | Sandbox reconcile-on-resume: `git fetch` + reset to branch head, reinstall when the lockfile hash changed                                                  | 1.3, 1.11     | todo   |

@@ -211,6 +211,66 @@ not block protecting a process, which is in place.
 
 ---
 
+## Q8 - SPEC §3.2 and §5.1 rest on a fact that is no longer true
+
+**Status: needs a human. This is a fact correction, not a re-litigation of
+§5.**
+
+SPEC §3.2 line 220 says:
+
+> "Modal's SDK is Python. There is no supported Go SDK, so an all-Go backend
+> would need a Python sidecar for sandbox orchestration anyway."
+
+`github.com/modal-labs/modal-client/go` **v0.10.1** was published 2026-09-10,
+in the same first-party monorepo as the Python client, documented on Modal's own
+site. Verified independently at
+`https://proxy.golang.org/github.com/modal-labs/modal-client/go/@latest`.
+
+This matters because **§21 decision 2's resolution cites the false premise**:
+"`sandboxd` stays Python either way because Modal has no Go SDK." The decision
+itself still looks right, but the stated reason cannot stand as written.
+
+The conclusion survives on grounds the SPEC did not cite, and which task 1.1
+verified:
+
+- The Go SDK is **pre-1.0 Beta**, with breaking changes in 0.8.0, 0.9.0 **and**
+  0.10.0 — roughly every six to eight weeks.
+- **Functions are Python-only** by Modal's own statement, and SPEC §14's
+  Playwright/Lighthouse crawler is a Function. Python does not leave the stack
+  either way.
+- Python has a typed `ResourceExhaustedError` and a complete `.aio` surface. Go
+  has neither, and its throttling default is an unbounded silent wait.
+
+**Asked, not assumed:** should §3.2/§5.1's wording be corrected to "the Go SDK
+exists but is pre-1.0 and not at parity" — keeping the decision, fixing the
+reason, and making it re-examinable when the SDK reaches 1.0? Nothing is
+blocked on the answer; `sandboxd` stays Python meanwhile.
+
+## Q9 - `OPENCODE_DISABLE_PROJECT_CONFIG` is undocumented and load-bearing
+
+SPEC §17's sandbox boundary depends on it, and it is not in opencode's
+documented environment-variable table — it exists only in source
+(`config/config.ts:420`, `config/paths.ts:27`).
+
+Without it, two escapes are open on the pinned tag, both verified in source:
+
+1. A repo's `.opencode/agent/*.md` frontmatter permissions are concatenated
+   **after** `OPENCODE_PERMISSION` and evaluated with `findLast`, so the repo
+   wins.
+2. A repo's `.opencode/plugin/` executes arbitrary JavaScript with a Bun shell
+   handle and the authenticated server SDK, outside the permission system
+   entirely.
+
+Working agreement 4 says an undocumented surface is not something to build
+hopeful code on. The proposal is to **use it anyway and pin it with a test** —
+task 1.7 or 1.8 starts `opencode serve` against a hostile fixture repo and
+asserts the policy holds and the plugin never runs — so an upstream rename
+fails CI rather than silently opening the sandbox. **Confirm that is acceptable,
+or name a different mechanism.**
+
+Related: SPEC §11.3 treats `AGENTS.md` as the untrusted-repo-content risk. The
+plugin directory is sharper and should be added to it.
+
 ## Blocking decisions (SPEC §21) - needed before phase 1
 
 | #   | Decision                                                                                                    | Owner | Blocks    | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -236,10 +296,12 @@ without them. Start them during phase 0.
 
 ## Technical unknowns
 
-- **`opencode` hook surface.** SPEC §11.2 assumes six patches are necessary.
-  Before writing any of them, check the pinned tag for a plugin/hook API that
-  makes P1/P2/P3/P5 unnecessary. Anything achievable by configuration must not
-  be a patch (§11.1).
+- ~~**`opencode` hook surface.**~~ Resolved 2026-09-11 by task 1.1: **all six**
+  §11.2 patches have an upstream mechanism on `v1.18.30`, so `agent/patches/`
+  stays empty. Three things that changed other parts of the SPEC rather than
+  just the patch list are recorded in `docs/verified.md` §22 item 6 — the
+  `.opencode/plugin/` RCE gap in §11.3, the cache-adjusted token fields that
+  affect §19's ledger, and P5's turn-end hook not existing. See also Q9.
 - ~~**Go module path.**~~ Resolved 2026-09-09: the remote is
   `https://github.com/anasatwork01/cofound.git`, so Go modules are
   `github.com/anasatwork01/cofound/...`. The npm scope stays `@halyard/*` -
@@ -258,6 +320,46 @@ without them. Start them during phase 0.
   committed at `go 1.27.1` while the untouched services stay at `1.25.0`. See
   `docs/verified.md` finding 7.
 
-- **Sandbox egress allowlist mechanics.** SPEC §9 requires deny-by-default
-  egress. Whether Modal exposes the necessary network policy primitives is
-  part of §22 item 5, and the whole security model in §17.1 depends on it.
+- ~~**Sandbox egress allowlist mechanics.**~~ Resolved 2026-09-11 by task 1.1.
+  Modal exposes `block_network`, `outbound_cidr_allowlist` and
+  `outbound_domain_allowlist` on `Sandbox.create`, so §17.1's deny-by-default
+  egress is implementable. Two limits go in the threat model rather than being
+  discovered later: domain matching is **TLS/443 SNI only** (Postgres on 5432
+  needs a CIDR entry), and Modal documents **domain fronting** as a bypass, so a
+  shared-CDN allowlist entry is an exfiltration channel. See `docs/verified.md`
+  §22 item 5.
+
+Still unknown after task 1.1, and each one is an **inference, not a
+permission** (working agreement 4). Ask Modal support before any of these
+sizes a capacity model:
+
+- **Do Sandboxes count against the plan container cap?** Modal's resources
+  guide phrases the unit as "Each Modal Function or Sandbox container...", but
+  never states it outright. The cap is 100 on Starter, 5000 on Team.
+- **Is `Sandbox.create` metered on the 200 req/s workspace bucket?** The
+  documented sentence says "Function calls or HTTP requests". This decides warm
+  pool refill burst sizes.
+- **Per-workspace Volume count limit and volume-creation rate limit.** Not
+  documented at all. Design so the choice stays reversible —
+  `with_mount_options(sub_path=...)` on shared v2 Volumes needs no cap.
+- **Concurrent tunnel limit per workspace, and tunnel bandwidth.** Not
+  documented.
+- **Maximum CPU/memory per sandbox.** Enforced server-side at create; the number
+  is unpublished. 1 core / 4 GiB is plainly inside it, but a larger tier is a
+  guess.
+- **When the billing meter starts and stops** — at `create` or container start,
+  at the `terminate()` call or confirmed teardown. Check against a real invoice
+  in phase 1 before trusting §19 margins.
+- **`MODAL_IDENTITY_TOKEN` TTL and refresh semantics.** The OIDC guide's example
+  token shows a 48h `exp - iat`; no prose states a TTL or whether the
+  in-container value rotates. Do not hardcode 48h.
+
+- **Modal snapshot and restore latency is unmeasured, and it is the product's
+  central number.** No published timing exists for `snapshot_filesystem`,
+  `snapshot_directory` or `Sandbox.create` from either — only "optimized for
+  performance" and "mounted instantly". The one hard signal is that the SDK's
+  default `timeout` is 55s and changelog 1.4.3 added support for longer, which
+  means snapshots **can** exceed 55 seconds. **Task 1.x must ship a benchmark
+  harness** against a real workspace, measuring p50/p95/p99 on a representative
+  repo with `node_modules` installed. SPEC §9's p50 < 10s resume SLO cannot be
+  committed to before that exists.
