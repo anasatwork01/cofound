@@ -461,3 +461,58 @@ func TestAnOverlongKeyIsRefused(t *testing.T) {
 		t.Fatalf("status = %d, want 422: %s", resp.StatusCode, body)
 	}
 }
+
+// TestAnUnauthenticatedRequestIs401AndSaysSoUsefully.
+//
+// A regression test, and the bug it pins was found by running the console
+// against a local api rather than by any test in this suite.
+//
+// internal/tenancy and internal/auth deliberately do not import each other —
+// the comment on tenancy.Authenticator names the cycle as the mistake to avoid
+// — so each declared its own package-private `ErrNoSession`. Same name, two
+// values. errors.Is could never match them, so EVERY request without a session
+// fell past the middleware's 401 branch into the generic path and rendered:
+//
+//	500  {"code":"internal","message":"Halyard could not complete this request.",
+//	      "fix":"Contact support with the request id."}
+//
+// Three things wrong with that, in rising order of cost. It is the wrong
+// status. It tells someone who merely needs to sign in to contact support,
+// which is precisely what SPEC §18's "errors say what happened and how to fix
+// it" forbids. And it reports routine signed-out traffic as a server fault, so
+// the error rate — and, once task 0.13 lands Sentry, the alerting — is driven
+// by users who are simply not signed in yet.
+//
+// The existing middleware test did not catch it because its fake authenticator
+// returned tenancy's own sentinel, so it proved the middleware maps that value
+// and never exercised the real implementation. This test boots the real app.
+func TestAnUnauthenticatedRequestIs401AndSaysSoUsefully(t *testing.T) {
+	t.Parallel()
+	h := bootAuth(t) // no sign-in: the cookie jar is empty
+
+	resp, body := h.req(t, http.MethodGet, "/v1/projects")
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("want 401 for a request with no session, got %d: %s", resp.StatusCode, body)
+	}
+
+	var env struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+			Fix     string `json:"fix"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(body), &env); err != nil {
+		t.Fatalf("error envelope did not decode: %v\n%s", err, body)
+	}
+	if env.Error.Code == "internal" {
+		t.Errorf("an unauthenticated request reported itself as a server fault: %s", body)
+	}
+	// SPEC §18: an error says how to fix it. "Sign in" is the fix here, and
+	// telling this reader to contact support is the specific failure that
+	// prompted this test.
+	if strings.Contains(strings.ToLower(env.Error.Fix), "support") {
+		t.Errorf("the fix tells a signed-out reader to contact support: %q", env.Error.Fix)
+	}
+}
