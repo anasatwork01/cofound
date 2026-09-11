@@ -73,10 +73,16 @@ type Config struct {
 	// StatementCacheMode selects pgx's query exec mode.
 	//
 	// "prepared" is fastest and is wrong behind a transaction-mode pooler:
-	// PgBouncer and Hyperdrive may route consecutive statements to different
-	// server connections, so a prepared statement created on one is missing on
-	// the next. The failure is intermittent and looks like a database fault.
-	// Set this to "simple" or "exec" when a pooler sits in front.
+	// PgBouncer, or whichever pooler the chosen container host puts in the
+	// path, may route consecutive statements to different server connections,
+	// so a prepared statement created on one is missing on the next. The
+	// failure is intermittent and looks like a database fault. Set this to
+	// "simple" or "exec" when a pooler sits in front.
+	//
+	// Not Hyperdrive: that is a Workers binding, and the control plane reaches
+	// Postgres over pgx from a container. A Worker holding the control-plane
+	// database credential would invert SPEC §17. See docs/verified.md §22
+	// item 4.
 	StatementCacheMode string
 
 	// ApplicationName reaches pg_stat_activity, which is where an operator looks

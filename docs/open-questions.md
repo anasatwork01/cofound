@@ -612,11 +612,86 @@ criterion states the p50 unqualified. Both follow from the entries above.
 `docs/TASKS.md` rows 1.9, 1.10, 1.19 and 4.6 have already been rewritten; the
 SPEC's own phase summaries have not.
 
+## Decision brief for §21 decision 1 — the container host
+
+**Status: ready to decide. §22 item 2 is verified; the facts are in
+`docs/verified.md`.** Task 0.12 is blocked on this and on nothing else.
+
+Three facts decide it and all three point the same way — **an external container
+host behind Cloudflare** — but one is an inference, and that is what the
+decision should be gated on.
+
+### 1. A container-proxied SSE stream is not documented to survive
+
+Cloudflare Containers is fronted by a **Durable Object**, and Cloudflare's own
+DO documentation says a streamed `fetch()` body "never keep[s] the Durable
+Object alive, even while the response body is still streaming." The published
+`@cloudflare/containers@0.3.7` proxies a response as exactly that kind of
+subrequest. SPEC §5.1 has `api` and `gitd` holding thousands of long-lived
+streams.
+
+Both halves are confirmed from primary artifacts. The **conclusion** is one
+inference step, because Cloudflare never writes the sentence outright.
+
+The obvious workaround is closed: WebSockets through a container get
+`server.accept()` rather than hibernation, cap at a documented 15 minutes, and
+are disconnected by every deploy.
+
+### 2. The limits §3.5 made the condition are not published
+
+§3.5 offers Containers "**if** its current limits on memory, request duration,
+persistent connections and long-lived SSE suit us." The Containers docs mention
+SSE **zero times** and publish **no** per-instance connection number. Cloud Run
+publishes 1,000 concurrent and a 60-minute ceiling. **A known bad number beats
+an unknown** — which is the "more moving parts, fewer unknowns" trade §3.5
+already anticipated.
+
+### 3. `gitd` wants real disk and large bodies; Containers has neither
+
+Ephemeral disk only (20 GB max, lost on restart, snapshots "coming soon"), and
+request bodies capped by the **account plan** — 100 MB on Pro — because every
+container request passes through a Worker. A first `git push` of a large repo
+returns 413 before `gitd` sees a byte. Fly and Railway both sell real volumes.
+
+### What does _not_ decide it
+
+- **Cost.** ~$68/mo (Containers) vs ~$36 (Fly) vs ~$54+$20 (Railway) vs ~$171
+  (Cloud Run) for six always-on services. All rounding error beside the
+  ~$174/mo per continuously-running Modal sandbox in §22 item 5.
+- **Maturity.** Containers has been GA since 2026-04-13.
+- **Recycling.** Cloudflare is _kinder_ than Fly on deploys — 15 minutes to
+  drain against Fly's 5-second default. `Last-Event-ID` resume is needed on all
+  four hosts.
+- **Data residency.** Cloudflare is the **best** here
+  (`constraints.jurisdiction = "eu"`).
+
+### The three ways to answer
+
+1. **Pick an external host.** The recommendation is **Fly.io**: real volumes,
+   $0.02/GB egress, full TCP, `min_machines_running`, lowest predictable
+   always-on cost. Cloud Run is worst (60-minute ceiling, 1,000-concurrency cap,
+   most expensive). Fly vs Railway turns on preferences the facts do not settle.
+   **Fly publishes no timeout figures at all**, so 0.12 must establish Fly
+   Proxy's long-lived-HTTP behaviour by experiment.
+2. **Gate on one cheap experiment.** If the small vendor surface is worth it,
+   deploy one `lite` container, hold SSE open for an hour, and see. One Workers
+   Paid account, no new vendor, and it is the only thing that would overturn
+   fact 1. Deciding _conditionally_ is a legitimate answer here.
+3. **Change the architecture** so containers never hold the streams — terminate
+   SSE in a Durable Object with the hibernation API, Go services behind it doing
+   request/response only. Cloudflare's intended shape, and it works. But it
+   contradicts §5.1, reopens §5.4, and is a redesign rather than a host choice.
+   Named so it is a visible option rather than a later surprise.
+
+**What is blocked meanwhile:** every Go service's deployment. The container
+image itself is built, tested and host-agnostic (`infra/docker/Dockerfile`), and
+the console half of 0.12 does not depend on this at all.
+
 ## Blocking decisions (SPEC §21) - needed before phase 1
 
 | #   | Decision                                                                                                    | Owner | Blocks    | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | --- | ----------------------------------------------------------------------------------------------------------- | ----- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Container host: Cloudflare Containers, or an external host (Fly.io / Railway / Cloud Run) behind Cloudflare | human | 0.10      | Depends on §22 item 2. Long-lived SSE and git packfile handling are the deciding constraints                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 1   | Container host: Cloudflare Containers, or an external host (Fly.io / Railway / Cloud Run) behind Cloudflare | human | 0.12      | **§22 item 2 is now verified and the facts point one way: an external host.** Long-lived SSE and git packfile handling are the deciding constraints, and Containers is fronted by a Durable Object that a streamed `fetch()` body does not keep alive. Full brief below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | 2   | ~~All-Python backend, or the Go/Python split~~                                                              | human | 0.4, 0.5  | **Resolved 2026-09-10: the Go/Python split, as specified.** Chosen over all-Python because api and gitd hold thousands of concurrent long-lived SSE streams and do heavy git packfile plumbing, where Go's memory-per-connection and process model are materially better; `sandboxd` stays Python either way — **not** because Modal lacks a Go SDK (it has had one since 2026-09-10; see the Q8 erratum) but because that SDK is pre-1.0 and not at parity, and because Modal Functions are Python-only, so §14's crawler keeps Python in the stack regardless. Reason corrected 2026-09-11; the decision itself is unchanged and was reconfirmed by the human. Implemented by task 0.4 (`packages/chassis`). The original rationale is kept as the record of why it was a real question: **Depends on team size.** SPEC §5.1: at one or two engineers, go all-Python. Do not go all-Go. |
 | 3   | Neon for app databases, or schema-per-project on shared Postgres behind PgBouncer                           | human | 5.4, 3.9  | Branching is what makes preview migrations safe; losing it means building migration dry-runs yourself                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | 4   | Auth library for generated apps, pinned version                                                             | human | 5.6, 2.1  | Auth.js or Better Auth. Template-level, not per project                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
