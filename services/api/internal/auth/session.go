@@ -97,7 +97,23 @@ func NewSessions(pool *db.Pool, policy SessionPolicy, now func() time.Time) *Ses
 // and distinguishing them in the returned error invites a handler that reports
 // which — turning the endpoint into an oracle for whether a captured token was
 // ever real.
-var ErrNoSession = errors.New("auth: no valid session")
+//
+// It carries the chassis's Unauthenticated code rather than being a bare
+// sentinel, and that is load-bearing rather than stylistic.
+//
+// tenancy.Authenticator's contract is "return ErrNoSession", but the two
+// packages deliberately do not import each other — see the comment on
+// tenancy.Authenticator, where the cycle is called out as the mistake to avoid.
+// So each side declared its own package-private sentinel with the same name,
+// errors.Is could never match them, and every unauthenticated request fell
+// through to the generic path and rendered 500 "internal" with a body telling
+// the reader to contact support. Carrying the CODE makes the rendering correct
+// on every path, including the ones that never consult a sentinel at all:
+// errs.From uses errors.As, so any handler that returns this gets a 401 whether
+// or not it was routed through the tenancy middleware.
+//
+// tests/... TestUnauthenticatedRequestIsNotAnInternalError pins it.
+var ErrNoSession = errs.Unauthenticated().WithCause(errors.New("auth: no valid session"))
 
 // Issue creates a session for a user who has just proven their identity.
 func (s *Sessions) Issue(ctx context.Context, userID uuid.UUID, ip net.IP, userAgent string) (Token, *Session, error) {

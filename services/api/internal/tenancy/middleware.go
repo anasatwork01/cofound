@@ -80,7 +80,17 @@ type Authenticator interface {
 }
 
 // ErrNoSession is what an Authenticator returns for an unauthenticated request.
-var ErrNoSession = errors.New("tenancy: no session")
+//
+// It carries the chassis's Unauthenticated code, so an implementation that
+// returns its OWN error is still rendered as 401 as long as that error carries
+// the same code. That matters because this package and internal/auth
+// deliberately do not import each other, so neither can compare the other's
+// sentinel by identity — and when both simply declared `errors.New(...)`, the
+// errors.Is below never matched and every unauthenticated request rendered 500.
+//
+// The check below is therefore a convenience for implementations that use this
+// value, not the mechanism: errs.From maps the code whichever error arrives.
+var ErrNoSession = errs.Unauthenticated().WithCause(errors.New("tenancy: no session"))
 
 // Resolver resolves and enforces tenancy.
 type Resolver struct {
