@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": ["gen/typescript/**/*.ts"],
+  "exclude": ["node_modules"]
+}

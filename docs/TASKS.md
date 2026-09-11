@@ -15,13 +15,13 @@ Status: `todo` · `blocked` · `wip` · `done`
 
 External approval queues run in weeks, and phase 6 stalls without them.
 
-| ID  | Task                                                              | Status |
-| --- | ----------------------------------------------------------------- | ------ |
-| L.1 | Apply for a Google Ads API developer token (§22.9)                | todo   |
-| L.2 | Start Meta App Review + Business Verification (§22.10)            | todo   |
-| L.3 | Apply for a Stripe Connect platform account (§22.11)              | todo   |
-| L.4 | Answer the nine SPEC §21 decisions - see `docs/open-questions.md` | todo   |
-| L.5 | Commit the canonical `docs/SPEC.md` and `docs/mockup.html` (Q0)   | todo   |
+| ID  | Task                                                                                                                                                      | Status |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| L.1 | Apply for a Google Ads API developer token (§22.9)                                                                                                        | todo   |
+| L.2 | Start Meta App Review + Business Verification (§22.10)                                                                                                    | todo   |
+| L.3 | Apply for a Stripe Connect platform account (§22.11)                                                                                                      | todo   |
+| L.4 | Answer the nine SPEC §21 decisions - see `docs/open-questions.md`                                                                                         | todo   |
+| L.5 | Commit the canonical `docs/SPEC.md` and `docs/mockup.html` (Q0). SPEC.md **done**; **`mockup.html` still outstanding and now blocking real token values** | todo   |
 
 ---
 
@@ -30,21 +30,29 @@ External approval queues run in weeks, and phase 6 stalls without them.
 _Accept: a user can sign up, create an org, sign in, and see an empty project
 list on a real deployed URL._
 
-| ID   | Task                                                                                                                                                                                                                                                                    | Depends on           | Status   |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | -------- |
-| 0.1  | Monorepo skeleton, toolchain pins, `make doctor` / `make verify`, opencode pinned as a submodule                                                                                                                                                                        | -                    | **done** |
-| 0.2  | CI: GitHub Actions running `make verify` per language, plus Postgres + Redis in Docker for integration tests                                                                                                                                                            | 0.1                  | **done** |
-| 0.3  | `packages/schema`: JSON Schema + OpenAPI sources, codegen to TS/Go/Python, `make gen`, CI drift check                                                                                                                                                                   | 0.1                  | **done** |
-| 0.4  | Go service chassis: config, slog JSON logging, OTel tracing, health/readiness, graceful shutdown, chi router, error envelope                                                                                                                                            | 0.2, §21.2           | **done** |
-| 0.5  | Python service chassis: FastAPI app factory, settings, logging, OTel, health endpoints                                                                                                                                                                                  | 0.2, §21.2           | **done** |
-| 0.6  | Control plane schema: goose migrations for all of SPEC §6, pgx pool, RLS policies + per-transaction `app.org_id`, integration test proving cross-tenant denial. Write the policy with `nullif(current_setting('app.org_id', true), '')::uuid` — see `docs/verified.md`. | 0.4                  | **done** |
-| 0.7  | Auth: email magic link + Google OAuth, rotating httpOnly `SameSite=Lax` sessions                                                                                                                                                                                        | 0.6                  | **done** |
-| 0.8  | Tenancy middleware: resolve `(user_id, org_id, role)` once, role matrix in one place, never inline                                                                                                                                                                      | 0.7                  | **done** |
-| 0.9  | Org + project CRUD, invites, org switching, `audit_log` writer covering SPEC §8's list                                                                                                                                                                                  | 0.8                  | **done** |
-| 0.10 | `Idempotency-Key` middleware, structured error contract, edge rate limiting                                                                                                                                                                                             | 0.4                  | **done** |
-| 0.11 | Console shell: Next.js App Router, Tailwind token layer extracted from `docs/mockup.html`, SPEC §18 route skeleton, TanStack Query, Zustand, top-bar chrome                                                                                                             | 0.3, L.5, §21.9      | blocked  |
-| 0.12 | First deployed environment: console on Workers via OpenNext, one Go service on the chosen container host, Hyperdrive, staging + production                                                                                                                              | 0.11, §21.1, §22.1-4 | blocked  |
-| 0.13 | Sentry for console and services; axe accessibility checks in CI                                                                                                                                                                                                         | 0.2, 0.11            | todo     |
+| ID   | Task                                                                                                                                                                                                                                                                     | Depends on           | Status     |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- | ---------- |
+| 0.1  | Monorepo skeleton, toolchain pins, `make doctor` / `make verify`, opencode pinned as a submodule                                                                                                                                                                         | -                    | **done**   |
+| 0.2  | CI: GitHub Actions running `make verify` per language, plus Postgres + Redis in Docker for integration tests                                                                                                                                                             | 0.1                  | **done**   |
+| 0.3  | `packages/schema`: JSON Schema + OpenAPI sources, codegen to TS/Go/Python, `make gen`, CI drift check                                                                                                                                                                    | 0.1                  | **done**   |
+| 0.4  | Go service chassis: config, slog JSON logging, OTel tracing, health/readiness, graceful shutdown, chi router, error envelope                                                                                                                                             | 0.2, §21.2           | **done**   |
+| 0.5  | Python service chassis: FastAPI app factory, settings, logging, OTel, health endpoints                                                                                                                                                                                   | 0.2, §21.2           | **done**   |
+| 0.6  | Control plane schema: goose migrations for all of SPEC §6, pgx pool, RLS policies + per-transaction `app.org_id`, integration test proving cross-tenant denial. Write the policy with `nullif(current_setting('app.org_id', true), '')::uuid` — see `docs/verified.md`.  | 0.4                  | **done**   |
+| 0.7  | Auth: email magic link + Google OAuth, rotating httpOnly `SameSite=Lax` sessions                                                                                                                                                                                         | 0.6                  | **done**   |
+| 0.8  | Tenancy middleware: resolve `(user_id, org_id, role)` once, role matrix in one place, never inline                                                                                                                                                                       | 0.7                  | **done**   |
+| 0.9  | Org + project CRUD, invites, org switching, `audit_log` writer covering SPEC §8's list                                                                                                                                                                                   | 0.8                  | **done**   |
+| 0.10 | `Idempotency-Key` middleware, structured error contract, edge rate limiting                                                                                                                                                                                              | 0.4                  | **done**   |
+| 0.11 | Console shell: Next.js App Router, Tailwind token layer (**provisional values** - `docs/mockup.html` does not exist, see L.5/Q0; structure real, values quarantined in one file and enforced by tests), SPEC §18 route skeleton, TanStack Query, Zustand, top-bar chrome | 0.3, L.5, §21.9      | **done\*** |
+| 0.12 | First deployed environment: console on Workers via OpenNext, one Go service on the chosen container host, Hyperdrive, staging + production                                                                                                                               | 0.11, §21.1, §22.1-4 | blocked    |
+| 0.13 | Sentry for console and services; axe accessibility checks in CI                                                                                                                                                                                                          | 0.2, 0.11            | todo       |
+
+\* **0.11 is done except for its token values.** SPEC §3.1 names `docs/mockup.html`
+as the source of the design tokens and that file does not exist (task L.5, Q0). The
+shell, the routes, the chrome and the three-state semantics are built and tested; the
+colour and type values are provisional, quarantined in `packages/ui/src/tokens/palette.css`,
+and enforced there by `tests/console/tokens-quarantine.test.ts` so the swap is one file.
+See `packages/ui/DESIGN.md`. SPEC §21 decision 9 is also still open and changes the
+same layer.
 
 ---
 

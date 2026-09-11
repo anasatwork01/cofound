@@ -82,14 +82,18 @@ lint-js: ## prettier check
 	pnpm run lint
 
 .PHONY: typecheck
-typecheck: typecheck-py ## Static type checks (typecheck-js arrives with task 0.11)
+typecheck: typecheck-py typecheck-js ## Static type checks
 
 .PHONY: typecheck-py
 typecheck-py: ## mypy, strict
 	uv run mypy services/sandboxd/src services/workers/src
 
+.PHONY: typecheck-js
+typecheck-js: ## tsc --noEmit across the workspace
+	pnpm run typecheck
+
 .PHONY: test
-test: test-go test-py ## Run unit tests (no services needed)
+test: test-go test-py test-js ## Run unit tests (no services needed)
 
 .PHONY: test-go
 test-go: ## Go unit tests
@@ -107,6 +111,10 @@ test-go: ## Go unit tests
 .PHONY: test-py
 test-py: ## Python unit tests
 	uv run pytest -m "not integration"
+
+.PHONY: test-js
+test-js: ## Vitest (console shell, shared UI, token guards)
+	pnpm run test
 
 .PHONY: test-integration
 test-integration: ## Integration tests against Postgres + Redis (make services-up first)

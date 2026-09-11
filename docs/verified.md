@@ -10,7 +10,7 @@ Status values: `unverified` · `verified` · `contradicted` · `blocked`
 
 | #   | Fact to verify                                                                                                     | Status     | Checked    | Finding                                                                                                                                                                                                                                                                                                                            |
 | --- | ------------------------------------------------------------------------------------------------------------------ | ---------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | `@opennextjs/cloudflare` - Next.js version support, unsupported features, ISR/caching                              | unverified | -          | Blocks tasks 0.11, 0.12, 3.1                                                                                                                                                                                                                                                                                                       |
+| 1   | `@opennextjs/cloudflare` - Next.js version support, unsupported features, ISR/caching                              | verified   | 2026-09-11 | Pin `next` **16.3.4** exactly and `@opennextjs/cloudflare` **1.20.6**. **Next 15 fails the build gate on 2026-10-21**; a missing major (17) fails too, so never `^16`. Console needs no cache bindings. Long-lived SSE is killed by weekly runtime updates - `Last-Event-ID` is load-bearing.                                      |
 | 2   | Cloudflare Containers - memory/CPU limits, max request duration, long-lived SSE, pricing                           | unverified | -          | Blocks SPEC §21 decision 1                                                                                                                                                                                                                                                                                                         |
 | 3   | Cloudflare for SaaS - custom hostname limits per zone, TLS issuance latency, apex support                          | unverified | -          | Blocks task 3.6                                                                                                                                                                                                                                                                                                                    |
 | 4   | Cloudflare Hyperdrive - supported Postgres providers, connection limits, latency                                   | unverified | -          | Blocks tasks 0.12, 3.9                                                                                                                                                                                                                                                                                                             |
@@ -25,6 +25,235 @@ Status values: `unverified` · `verified` · `contradicted` · `blocked`
 | 13  | LLM provider model identifiers, pricing, cache semantics                                                           | unverified | -          | Never hardcode. Config only. See SPEC §16.4                                                                                                                                                                                                                                                                                        |
 | 14  | Auth.js / Better Auth - status, Drizzle adapter support, behaviour on Cloudflare Workers                           | unverified | -          | Blocks SPEC §21 decision 4, task 5.6                                                                                                                                                                                                                                                                                               |
 | 15  | Whether Workers can host the generated Next.js apps with the driver chosen in decision 3                           | unverified | -          | Blocks task 3.9                                                                                                                                                                                                                                                                                                                    |
+
+## SPEC §22 item 1 — `@opennextjs/cloudflare`
+
+Verified 2026-09-11 for task 0.11. Where a fact decides a version pin it was read from the
+**published package** — registry metadata and the extracted tarball — rather than from the
+documentation, because on this item the two disagree and the documentation is the stale side.
+
+| Package                  | Pin          | Why exactly this                                                                   |
+| ------------------------ | ------------ | ---------------------------------------------------------------------------------- |
+| `@opennextjs/cloudflare` | **1.20.6**   | Exact, not caret. The Next-version gate moves with every release                   |
+| `@opennextjs/aws`        | 4.1.4        | Transitive, pinned exactly by the adapter. **Owns the support gate** below         |
+| `next`                   | **16.3.4**   | Not Next 15 — see the expiry below. Not `^16` — see Next 17                        |
+| `wrangler`               | 4.131.0      | Peer is `^4.125.0`; `engines.node >= 22.0.0` is the repo's binding Node floor      |
+| `react` / `react-dom`    | 19.2.8       | Identical versions. 19.3.0 shipped 2026-09-09 — two days old, not a foundation pin |
+| `tailwindcss`            | 4.3.3        | v4, build-time only. Nothing Tailwind reaches the Worker                           |
+| `workerd`                | 1.20260911.1 | Sets the maximum usable `compatibility_date`                                       |
+
+### Next.js 15 stops building in 40 days
+
+`@opennextjs/aws` 4.1.4 hardcodes a release-date table and refuses any major more than two
+years past its release:
+
+```js
+NEXT_RELEASE_DATES = { 16: "2025-10-21", 15: "2024-10-21", 14: "2023-10-26", ... }
+// isNextVersionSupported() → false once now > releaseDate + 2 years
+// checkNextVersionSupport() → process.exit(1)
+```
+
+So **Next 15 fails OpenNext's build gate on 2026-10-21**, forty days from this verification.
+Vercel's own support policy agrees to the day (15.x Maintenance LTS "until Oct. 21, 2026"), and
+npm's publish timestamp for `next@15.0.0` is 2024-10-21. A console pinned to Next 15 would
+build cleanly today and then start failing CI — and task 3.1's sandbox build — with a bare
+`process.exit(1)`.
+
+**Pin Next 16.3.4.** Two further traps in the same mechanism:
+
+- The peer range is `>=15.5.24 <16 || >=16.3.3`, so **16.0.0 through 16.3.2 are excluded**. The
+  range has ratcheted forward every few releases, and the exact-patch floors are the signature
+  of Next security backports. Treat the adapter and Next as a **matched pair** and bump them in
+  one commit; an adapter bump can _force_ a Next bump rather than merely allow one.
+- `NEXT_RELEASE_DATES` has **no `17` key**, and a missing major returns false rather than
+  "unknown, allow". When Next 17 ships — late October 2026 on the observed cadence — the build
+  breaks until a new adapter release. **Never write `^16`**: a routine `pnpm update` would pull
+  17 and produce an error that reads like a policy complaint rather than a version problem.
+
+There is an escape hatch, `--dangerouslyUseUnsupportedNextVersion`. Do not add it to a build
+script. If it ever looks necessary that is a signal to bump the adapter, and it should surface
+as a reviewed change rather than a flag someone added to make CI green.
+
+### Where the docs are wrong
+
+Worth stating plainly, because pinning from the documentation produces a broken install:
+
+| Docs say                                       | The published package says                                  |
+| ---------------------------------------------- | ----------------------------------------------------------- |
+| "latest minors of Next.js 14 and 15" supported | No Next 14 at all; `>=15.5.24 <16 \|\| >=16.3.3`            |
+| "Wrangler 3.99.0 or later"                     | `wrangler: ^4.125.0`                                        |
+| Worker size limit 3 MiB free / 10 MiB paid     | **64 MiB uncompressed**, identical on both plans            |
+| Node middleware "not yet supported"            | Implemented, but logs "experimental … use at your own risk" |
+
+### Size is not the constraint; startup time is
+
+The Worker ceiling is **64 MiB uncompressed** on both plans, and "there is no compressed size
+limit". CodeMirror 6 does not threaten that, so SPEC §3.1's "smaller bundle" rationale for
+CodeMirror over Monaco stands on client load time, not on the Worker limit. **Do not add a
+bundle-size gate to CI on the strength of the stale 10 MiB number.**
+
+The real ceiling is **1 second of CPU to parse and execute global scope**, rejected at deploy
+as `Script startup exceeded CPU time limit` (error 10021). The adapter's
+`routePreloadingBehavior` defaults to `"none"` and its own type doc warns that anything else
+"can result in higher CPU usage on cold starts" — so leave it unset, and have task 0.12 capture
+`startup_time_ms` from the wrangler deploy output.
+
+### Streaming, and the limit that actually bites
+
+Serving a stream from the console's own route handlers works and is not buffered: the
+`cloudflare-node` wrapper declares `supportStreaming: true`, resolves the `Response` as soon as
+headers are written, sets `retainChunks: false`, and plumbs the original `abortSignal` through
+so `request.signal.onabort` fires on client disconnect.
+
+Neither duration nor CPU is the constraint. Cloudflare imposes **no wall-clock limit** on an
+HTTP-triggered Worker, and "waiting on network requests does not count toward CPU time" — an
+idle SSE connection burns essentially nothing.
+
+**The limit that bites is the runtime update cycle.** Cloudflare updates the Workers runtime a
+few times per week and gives in-flight requests a **30-second grace period**, after which they
+are terminated. A stream held open for hours _will_ be killed several times a week, by design.
+
+That makes SPEC §3.1's `Last-Event-ID` resume load-bearing rather than a nicety. **Task 1.14's
+SSE gateway must treat mid-stream termination as routine**, and the console must reconnect and
+replay without surfacing an error.
+
+Two consequences for the console specifically:
+
+- **Do not proxy SSE through the console Worker.** Point the browser straight at the Go
+  gateway. A Worker invocation may have at most **6 simultaneous outgoing connections** awaiting
+  response headers, and each isolate is capped at **128 MB shared across all concurrent
+  requests** — a proxy would spend one connection slot per viewer against both budgets.
+- **A decision is needed before task 1.14, and it belongs to the gateway's auth design.**
+  Native `EventSource` cannot set request headers, so it cannot carry
+  `Authorization: Bearer`; it does send `Last-Event-ID` automatically on reconnect. `fetch`
+  streaming can set headers but then the console owns `Last-Event-ID` bookkeeping by hand.
+  Choosing `EventSource` means cookie auth plus CORS with `Access-Control-Allow-Credentials`
+  and an explicit non-wildcard origin on the Go side. Recorded in `docs/open-questions.md`.
+
+### The console needs no cache infrastructure
+
+`defineCloudflareConfig()` defaults `incrementalCache`, `tagCache`, `queue` and `cachePurge` to
+`"dummy"` and `enableCacheInterception` to `false`. None of it is required unless ISR or
+on-demand revalidation is used, and the console is an authenticated dashboard — dynamic SSR plus
+TanStack Query, no ISR surface.
+
+So `apps/console/open-next.config.ts` is a bare `defineCloudflareConfig({})`, and **task 0.12
+provisions no R2, KV, D1 or Durable Object queue for the console.**
+
+The generated user apps (tasks 3.1 and 3.3) are a different matter and will need most of it:
+R2 via `NEXT_INC_CACHE_R2_BUCKET` plus a `WORKER_SELF_REFERENCE` service binding whose service
+name must equal the worker name; a Durable Object queue for time-based revalidation; D1 or
+`DOShardedTagCache` for on-demand revalidation. Choose R2 over KV — Cloudflare and OpenNext both
+say KV is eventually consistent and not recommended here. Note the self-reference binding makes
+the wrangler config depend on the worker's own name, which matters for task 3.3's
+one-versioned-Worker-per-project scheme.
+
+### Runtime surface, and the one feature to avoid
+
+For `compatibility_date >= 2026-08-04` Workers enables `nodejs_compat` and `nodejs_compat_v2`
+by default. `node:fs`, `net`, `http`/`https`, `stream`, `crypto`, `zlib`, `process` and
+`AsyncLocalStorage` are native. **The failure mode to design against** is the stub set —
+`child_process`, `worker_threads`, `vm`, `cluster`, `http2`, `sqlite`, `dgram`, `tty`, `v8`,
+`readline`, `repl`, `inspector` import _successfully_ and throw at call time, as does anything
+unenv-polyfilled (`[unenv] <method> is not implemented yet!`). So a dependency touching those
+must be refused at review, not discovered in staging.
+
+Everything SPEC §3.1 and §18 need is supported: App Router, Route Handlers, dynamic routes,
+SSG, SSR, edge middleware, PPR, ISR, `after()`, `'use cache'`, Turbopack. **Node.js middleware
+is the exception** — implemented but explicitly experimental and unmaintained. Use edge
+middleware if auth redirects ever need one.
+
+React Server Components are the supported path, not a caveat: the adapter deliberately targets
+Next's **Node.js** runtime because "the edge runtime does not support all Next.js features".
+**Do not put `export const runtime = 'edge'` on any route** — that opts out of the runtime the
+adapter is built for.
+
+### `global_fetch_strictly_public` is a security flag
+
+`wrangler.jsonc` needs `main: ".open-next/worker.js"`, a `compatibility_date`, an `assets` block
+binding `.open-next/assets` to `ASSETS`, and
+`compatibility_flags: ["nodejs_compat", "global_fetch_strictly_public"]`.
+
+That second flag is **not cosmetic**. Without it, "requests to a Worker's own zone are routed to
+the zone's origin server, ignoring any Workers mapped to the URL and also bypassing Cloudflare
+security settings." A server-side fetch from the console to Halyard's own API domain would skip
+the WAF and any Access policy in front of it — a quiet hole in §17's boundary, on a flag that
+looks removable. It is commented in `wrangler.jsonc` for that reason.
+
+### Build versus deploy maps onto §17 exactly
+
+`build` needs no Cloudflare credentials; `preview`, `deploy` and `upload` shell out to wrangler
+and do. Its only network call is a `workerd` version lookup, and that runs only when _creating_
+a wrangler config — so a committed `wrangler.jsonc` removes it entirely and the build stays
+clean under §17.1's deny-by-default egress.
+
+That is precisely TASKS 3.3's "the sandbox never deploys": **the sandbox runs
+`opennextjs-cloudflare build` only and never holds a Cloudflare API token**; the control plane
+runs `deploy`. One trap for task 3.1 — a missing config file throws in CI but _prompts
+interactively_ when a TTY is attached, so set `SKIP_WRANGLER_CONFIG_CHECK=yes` in the sandbox
+build environment or a pty-allocating Modal sandbox will sit at a prompt forever instead of
+failing.
+
+`next dev` is unaffected; local development is ordinary Next.js. Keep
+`opennextjs-cloudflare preview` as a pre-merge check rather than an inner loop.
+
+### Library choices all survive
+
+Tailwind v4 cannot break under OpenNext because none of it runs there — it compiles to plain CSS
+at build time, and `@tailwindcss/oxide` ships prebuilt binaries for darwin arm64/x64, linux
+gnu/musl on both arches, plus a `wasm32-wasi` fallback. The same pin works on the dev Mac, in CI
+and in a Modal image whatever its libc.
+
+CodeMirror 6, TanStack Query, Zustand, react-hook-form and zod are all pure JS with React 18/19
+peers. CodeMirror is **import-safe under SSR** — `@codemirror/view` guards its module-scope DOM
+access with `typeof` checks — so task 2.7 should put it behind `"use client"` and construct
+`EditorView` in an effect, but must not reach for `dynamic(…, {ssr:false})` believing SSR would
+crash. That belief would push 2.7 into a worse design.
+
+### Two gaps this verification opened
+
+- **SPEC §3.1 requires "zod schemas generated from `packages/schema`" and no such generation
+  exists.** Task 0.3 emitted TypeScript types, Go and Python only. `json-schema-to-zod` 2.8.1
+  emits zod v4 by default. 0.11 ships no forms so it does not need this yet, but the task that
+  writes the first form must extend `make gen` rather than hand-write a schema — working
+  agreement 1 forbids writing the same type twice.
+- **Image optimization is an unmade decision.** Next's optimizer needs Cloudflare Images, which
+  is paid, and the adapter's image path supports neither `minimumCacheTTL` nor
+  `dangerouslyAllowLocalIP`. The console ships `images: { unoptimized: true }` because a
+  configured-but-unbound optimizer 500s at runtime. Task 0.12 should decide explicitly rather
+  than inherit the `images` binding from the adapter's template config, which enables it.
+
+### Toolchain facts this pinned
+
+- **TypeScript stays at 5.9.3, and 7.x would break `make gen-check`.** `typescript@7.0.2` is
+  the native compiler: its package `exports["."]` is `./lib/version.cjs`, exporting only
+  `{version, versionMajorMinor}`. `openapi-typescript` imports the classic compiler API at
+  runtime and dies. The unblocker is named — openapi-typescript shipping TS 7 support — so this
+  is a dependency-compatibility pin, not a judgement that TS 7 is unready. (tsc 7 handles this
+  repo's strict options, `-b` project references and `jsx: preserve` fine; it also drops the
+  tsconfig `plugins` array and ships no tsserver, so the Next IDE plugin cannot load under it.)
+- **jsdom cannot be installed here.** jsdom 30's `engines.node` is
+  `^22.22.2 || ^24.15.0 || >=26.0.0`; `.tool-versions` pins 22.18.0 and `.npmrc` sets
+  `engine-strict=true`, so pnpm aborts. The Next.js docs prescribe jsdom; **use happy-dom**,
+  which is also faster and runs axe correctly despite a stale warning in vitest-axe's README.
+  Bumping Node to satisfy jsdom is a cross-cutting toolchain change and belongs in its own task.
+- **`tsc --noEmit` fails on a clean checkout unless `next typegen` runs first**, because
+  Next 16 generates `next-env.d.ts` and `.next/types/**` where the global `PageProps`/
+  `LayoutProps` helpers live. `typecheck-js` runs both, in that order.
+- **Do not unit-test an async Server Component.** Next.js documents them as unsupported, and
+  the failure is silent: the component renders nothing rather than erroring, so a test asserting
+  something is _absent_ passes vacuously. They belong in task 1.18's E2E test.
+
+### What this does not establish
+
+No Worker was deployed and no Cloudflare account was used. Everything above is read from
+published package artifacts, Cloudflare's and OpenNext's current documentation, and the
+registry. Specifically unmeasured: whether a stream held open past 60 seconds survives on a
+deployed Worker (the adapter wraps the handler in `ctx.waitUntil`, whose 30-second cap
+Cloudflare says does **not** apply while a client is still receiving a streamed body — but that
+is prose, not a measurement). **Task 0.12 should hold one stream open past 60s against a real
+deployment.** Until then the browser-to-Go-gateway path, which does not depend on it at all, is
+the one to prefer.
 
 ## SPEC §22 item 5 — Modal
 

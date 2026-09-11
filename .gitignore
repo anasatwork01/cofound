@@ -52,3 +52,7 @@ infra/**/.terraform/
 infra/**/*.tfstate
 infra/**/*.tfstate.*
 tmp/
+
+# Next generates this and rewrites it on every `next typegen`.
+# Next's own docs say it must not be committed or edited.
+next-env.d.ts

@@ -34,8 +34,26 @@ regress.
 
 **Still outstanding:** `docs/mockup.html`, which SPEC §3.1 and §18 name as the
 source of the design tokens. It was never supplied and is not recoverable from
-the attachment. **Owner:** human. **Blocks:** task 0.11 (console shell), which
-`docs/TASKS.md` marks blocked for this reason.
+the attachment. **Owner:** human.
+
+**Task 0.11 shipped anyway, deliberately.** SPEC §18 specifies the console's
+_structure_ completely — all twelve routes verbatim, the persistent chrome, the
+three-state colour semantics, the copy rules, streaming, the write lease and the
+accessibility floor — and only the token _values_ need the mockup. So 0.11 built
+the structure and quarantined the values in
+`packages/ui/src/tokens/palette.css`, the only file in the repository permitted
+to contain a colour literal.
+
+That quarantine is enforced, not promised:
+`tests/console/tokens-quarantine.test.ts` fails on any colour literal, Tailwind
+built-in colour utility, arbitrary value or direct `--raw-*` reference outside
+that file, and `tests/console/contrast.test.ts` asserts every semantic pair
+clears SPEC §18's 4.5:1 — so when the mockup lands the swap is **one file, and
+checked rather than trusted**.
+
+What the mockup is still needed for: the actual values, the type scale and
+density, and whatever §21 decision 9 settles. `packages/ui/DESIGN.md` documents
+the two-tier structure and the exact steps to swap it in.
 
 ---
 
@@ -335,6 +353,35 @@ Related, and **not** closed by this resolution: SPEC §11.3 treats `AGENTS.md` a
 the untrusted-repo-content risk. The plugin directory is sharper and belongs in
 §11.3's threat model — a SPEC text change, so it is recorded as an erratum
 rather than silently edited. See the §11.3 erratum below.
+
+## Q10 - `EventSource` or `fetch` streaming, and it decides the gateway's auth
+
+SPEC §3.1 says "native `EventSource`/`fetch` streaming against the SSE gateway"
+and leaves the choice open. It cannot stay open past task 1.14, because the two
+options need different authentication on the Go side:
+
+|                              | `EventSource`                                                                                            | `fetch` streaming                     |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| Request headers              | **Cannot set any** — so no `Authorization: Bearer`                                                       | Can set them                          |
+| `Last-Event-ID` on reconnect | Sent automatically                                                                                       | **The console implements it by hand** |
+| What the gateway needs       | Cookie auth, plus CORS with `Access-Control-Allow-Credentials: true` and an explicit non-wildcard origin | Bearer token, ordinary CORS           |
+
+This is not a preference. Task 1.1's verification of §22 item 1 established that
+Cloudflare updates the Workers runtime a few times per week and terminates
+in-flight requests after a 30-second grace period, so **a long-lived stream will
+be cut several times a week by design**. `Last-Event-ID` resume is therefore
+load-bearing rather than a nicety, and whichever transport is chosen has to
+carry it.
+
+`EventSource` looks the better fit — the browser owns reconnection and replay,
+which is exactly the part that must not be got wrong — and the console already
+uses a `__Host-` session cookie from task 0.7. The cost is that the Go gateway
+needs credentialed CORS. **Confirm before 1.14 starts.**
+
+Related and already settled: do **not** proxy the stream through the console
+Worker. A Worker invocation may hold at most 6 simultaneous outgoing connections
+and each isolate is capped at 128 MB across all concurrent requests, so the
+browser talks to the Go gateway directly. See `docs/verified.md` §22 item 1.
 
 ## SPEC errata
 
