@@ -12,6 +12,7 @@ import (
 	"github.com/anasatwork01/cofound/packages/db"
 
 	"github.com/anasatwork01/cofound/services/api/internal/auth"
+	"github.com/anasatwork01/cofound/services/api/internal/tenancy"
 
 	apiconfig "github.com/anasatwork01/cofound/services/api/internal/config"
 )
@@ -28,6 +29,9 @@ type API struct {
 
 	// Auth is the sign-in surface, built by Setup.
 	Auth *auth.Handlers
+
+	// Tenancy resolves (user_id, org_id, role) for the authed subtree.
+	Tenancy *tenancy.Resolver
 
 	// MailerFor overrides how magic links are delivered. Tests capture the link
 	// with it; production leaves it nil and gets the log-only mailer, because
@@ -124,6 +128,22 @@ func (a *API) Setup(ctx context.Context, rt *chassis.Runtime) (io.Closer, error)
 		ConsoleOrigin: cfg.ConsoleOrigin,
 	}
 	a.Auth.Mount(rt.Mux.Public, rt.Errors)
+
+	// Tenancy (SPEC §8): every authenticated request resolves to
+	// (user_id, org_id, role) exactly once, here, and role checks happen in
+	// tenancy.Require rather than in any handler. Mounted on the AUTHED subtree
+	// so that a route added later is covered by construction — a handler
+	// mounted there cannot forget to authenticate, because it has no way to be
+	// reached without this middleware having run. The org and the role are
+	// resolved per route by tenancy.Resolver.Require, which must run after
+	// chi has matched the pattern carrying {org} or {project}.
+	//
+	// No /v1 routes are mounted on it yet. Task 0.9 adds the first of them; the
+	// middleware and its matrix are tested directly in the meantime, because
+	// inventing an endpoint api.openapi.yaml does not document to give the test
+	// something to call would break working agreement 4.
+	a.Tenancy = &tenancy.Resolver{Pool: pool, Auth: a.Auth}
+	rt.Mux.Authed.Use(a.Tenancy.Authenticate)
 
 	// The streaming subtree exists and is empty. It has no handler timeout and
 	// no body cap, which is what makes it safe for SSE. Task 1.14 mounts

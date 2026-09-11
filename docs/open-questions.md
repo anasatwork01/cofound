@@ -150,6 +150,41 @@ user in a deployed environment. Nothing in phase 0.
 
 ---
 
+## Q6 - `/v1/projects/{project}` is ambiguous across orgs
+
+SPEC §7.1's project paths take a project **slug**, and §6 makes a project slug
+unique only within an org (`unique (org_id, slug)`). So for a user who belongs
+to two orgs that each have a project called `crm`, `/v1/projects/crm` names two
+different projects — and §7.1 defines no way to say which, even though §8
+requires "org switching in the project picker", which means the console has a
+current org it could send.
+
+Task 0.8 resolves it as follows, and the choice is recorded because it adds a
+header the specification does not mention:
+
+- An optional `X-Halyard-Org` header names the org by slug. Documented in
+  `api.openapi.yaml` as a reusable parameter, so the routes task 0.9 adds
+  reference it rather than each inventing it.
+- Without the header, the project is resolved across the caller's memberships.
+  Exactly one match is served; **more than one is refused** with
+  `ambiguous_project` (409) naming the candidate org slugs, which are safe to
+  disclose because the caller is a member of all of them.
+- A guess is never served. Picking one would mean acting on the wrong tenant's
+  project, which is the worst outcome available here.
+
+Single-org callers — almost everyone — therefore stay on exactly the path §7.1
+specifies and never send the header.
+
+**The alternatives, and why not:** making project slugs globally unique would
+mean one tenant's naming choices constrain another's, which is visible to users
+and worse. Putting the org in the path (`/v1/orgs/{org}/projects/{project}`)
+would contradict §7.1's spelling directly.
+
+**Owner:** human, to confirm the header or name a different mechanism.
+**Blocks:** nothing; 0.8 proceeds on the stated reading and 0.9 builds on it.
+
+---
+
 ## Blocking decisions (SPEC §21) - needed before phase 1
 
 | #   | Decision                                                                                                    | Owner | Blocks    | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |

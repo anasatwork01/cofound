@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/anasatwork01/cofound/packages/chassis/errs"
@@ -47,6 +48,17 @@ type Handlers struct {
 	// ConsoleOrigin is where the OAuth callback sends the browser afterwards.
 	// From configuration, never from the request.
 	ConsoleOrigin string
+
+	// pending holds a rotated token between UserFor and Rotated, keyed by the
+	// request.
+	//
+	// A map keyed by *http.Request rather than a context value, because the
+	// tenancy middleware calls UserFor with the request it was given and cannot
+	// hand a new context back up to whoever wrote the response. Entries are
+	// removed by LoadAndDelete on the same request, so nothing accumulates —
+	// and a request whose handler never calls Rotated simply does not rotate,
+	// which is safe: the old token is still inside its grace window.
+	pending sync.Map
 }
 
 // AuditWriter records the events SPEC §8 requires an audit trail for.
@@ -383,4 +395,41 @@ func cut(s, sep string) (before, after string, found bool) {
 		}
 	}
 	return s, "", false
+}
+
+// UserFor implements tenancy.Authenticator.
+//
+// Returns the signed-in user, or a sentinel the tenancy middleware maps to 401.
+// It deliberately does NOT write a rotated cookie: a resolution that then fails
+// with 404 must not leave the browser holding a token inside its grace window,
+// so rotation is applied by Rotated at a point the caller chooses.
+func (h *Handlers) UserFor(r *http.Request) (uuid.UUID, error) {
+	token, ok := h.Cookies.Read(r)
+	if !ok {
+		return uuid.Nil, ErrNoSession
+	}
+	sess, rotated, err := h.Sessions.Verify(r.Context(), token, clientIP(r), r.UserAgent())
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if !rotated.IsZero() {
+		// Stashed rather than written, so Rotated can flush it once the request
+		// is known to be going ahead.
+		h.pending.Store(r, rotated)
+	}
+	return sess.UserID, nil
+}
+
+// Rotated writes a refreshed session cookie if Verify issued one.
+//
+// Called by the tenancy middleware immediately after authentication succeeds.
+// Rotation has to be honoured on EVERY response, not only on sign-in, or it
+// silently never takes effect — and the browser then keeps presenting a token
+// that stops working when its grace window closes.
+func (h *Handlers) Rotated(w http.ResponseWriter, r *http.Request) {
+	if token, ok := h.pending.LoadAndDelete(r); ok {
+		if t, fine := token.(Token); fine && !t.IsZero() {
+			h.Cookies.Set(w, t)
+		}
+	}
 }

@@ -507,3 +507,117 @@ async def test_a_careless_permissive_policy_cannot_widen_access(
         assert b not in owners
     finally:
         await owner.execute("drop policy careless_support_view on secrets")
+
+
+# ------------------------------------------- user-scoped membership (00016)
+
+
+async def _as_user(conn: asyncpg.Connection, user: str, sql: str, *args: object) -> list:
+    """Run sql scoped to a USER but not to an org, as the tenancy resolver does."""
+    async with conn.transaction():
+        await conn.execute("select set_config('app.user_id', $1, true)", user)
+        return await conn.fetch(sql, *args)
+
+
+async def test_a_user_can_list_their_own_orgs_without_an_org_scope(
+    app: asyncpg.Connection, owner: asyncpg.Connection, two_orgs: tuple[str, str]
+) -> None:
+    """The circularity migration 00016 exists to break.
+
+    Resolving which org a request is about means reading `orgs` by slug and
+    `org_members` by user, and both happen BEFORE any org is current. With an
+    org-keyed policy those reads return nothing, and the tenancy middleware
+    reports "that org does not exist" for every org that does.
+    """
+    a, b = two_orgs
+    user_a = await owner.fetchval("select user_id from org_members where org_id = $1", uuid.UUID(a))
+
+    orgs = await _as_user(app, str(user_a), "select id from orgs")
+    assert [str(r["id"]) for r in orgs] == [a], (
+        "a user scoped to themselves should see exactly the orgs they belong to"
+    )
+
+    members = await _as_user(app, str(user_a), "select org_id, user_id from org_members")
+    assert [str(r["user_id"]) for r in members] == [str(user_a)]
+    assert b not in {str(r["org_id"]) for r in members}
+
+
+async def test_a_user_scope_does_not_expose_another_users_membership(
+    app: asyncpg.Connection, owner: asyncpg.Connection, two_orgs: tuple[str, str]
+) -> None:
+    """The widened policy must widen by exactly one dimension and no more."""
+    a, b = two_orgs
+    user_a = await owner.fetchval("select user_id from org_members where org_id = $1", uuid.UUID(a))
+    user_b = await owner.fetchval("select user_id from org_members where org_id = $1", uuid.UUID(b))
+
+    rows = await _as_user(app, str(user_a), "select user_id from org_members")
+    seen = {str(r["user_id"]) for r in rows}
+    assert str(user_b) not in seen, "scoping to one user exposed another user's membership rows"
+
+
+async def test_a_user_scope_alone_opens_no_other_table(
+    app: asyncpg.Connection, owner: asyncpg.Connection, two_orgs: tuple[str, str]
+) -> None:
+    """00016 widened `orgs` and `org_members`. Nothing else.
+
+    Every other tenant table still compares against app.org_id, which is unset
+    in a user scope, so it matches nothing. That is the correct failure: a query
+    that needs an org must say which.
+    """
+    a, _ = two_orgs
+    user_a = await owner.fetchval("select user_id from org_members where org_id = $1", uuid.UUID(a))
+    for table in ("projects", "secrets", "ledger_entries", "audit_log"):
+        rows = await _as_user(app, str(user_a), f"select 1 from {table}")
+        assert rows == [], f"{table} was readable with only a user scope"
+
+
+async def test_creating_an_org_requires_scoping_to_its_own_new_id(
+    app: asyncpg.Connection, owner: asyncpg.Connection
+) -> None:
+    """How `POST /v1/orgs` can work at all, and a property it gets for free.
+
+    The policy on `orgs` is keyed on the org's own id, so an unscoped insert is
+    refused — you cannot create an org without saying which org you are
+    creating. Scoping to the id you are about to insert satisfies it, and an
+    insert naming any OTHER id is refused, so a request cannot create an org it
+    did not declare.
+    """
+    new = uuid.uuid4()
+    other = uuid.uuid4()
+    slug = f"created-{new.hex[:8]}"
+    try:
+        # Unscoped: refused.
+        with pytest.raises(asyncpg.InsufficientPrivilegeError):
+            await app.execute(
+                "insert into orgs (id, name, slug) values ($1, 'Unscoped', $2)", new, slug
+            )
+
+        # Scoped, but naming a different id: refused.
+        async with app.transaction():
+            await app.execute("select set_config('app.org_id', $1, true)", str(new))
+            with pytest.raises(asyncpg.InsufficientPrivilegeError):
+                await app.execute(
+                    "insert into orgs (id, name, slug) values ($1, 'Mismatched', $2)",
+                    other,
+                    slug,
+                )
+
+        # Scoped to its own id: allowed.
+        async with app.transaction():
+            await app.execute("select set_config('app.org_id', $1, true)", str(new))
+            await app.execute(
+                "insert into orgs (id, name, slug) values ($1, 'Scoped To Itself', $2)",
+                new,
+                slug,
+            )
+
+        # And it is there — read back in the same scope, since that is the only
+        # scope in which it is visible.
+        async with app.transaction():
+            await app.execute("select set_config('app.org_id', $1, true)", str(new))
+            assert await app.fetchval("select slug from orgs where id = $1", new) == slug
+
+        # The other id was never created.
+        assert await owner.fetchval("select count(*) from orgs where id = $1", other) == 0
+    finally:
+        await owner.execute("delete from orgs where id = any($1::uuid[])", [new, other])

@@ -695,6 +695,77 @@ Related, from the same verification: the ownership bypass follows role
 role would silently disable RLS on any table that is not `FORCE`d. Every table
 is forced, which makes that mistake non-fatal.
 
+## Tenancy resolution
+
+Verified 2026-09-11 for task 0.8. Three findings, each of which came from a
+failing test rather than from reading the specification.
+
+### Middleware at a subtree root cannot see route parameters
+
+`chi` populates `URLParam` while matching, so middleware registered with `Use`
+at the root of a subtree runs **before** the pattern below it has been matched.
+A tenancy middleware mounted there sees an empty `{org}` and reports "that
+request needs an organisation" for every request. The chassis's own `RouteTag`
+middleware carries the same note.
+
+The split that fixes it is also the better design: **authentication** needs no
+route parameters and happens once at the subtree root; **org resolution** needs
+them and happens in `Require`, which is inline on a route and therefore
+post-routing by construction. SPEC §8's "role checks in a single middleware,
+never inline" is still satisfied — `Require` is that middleware and the only
+thing that consults the matrix.
+
+### An org-keyed policy on `orgs` is circular
+
+Resolving which org a request is about means reading `orgs` by slug and
+`org_members` by user, and both happen **before** any org is current. With
+migration `00013`'s org-keyed policy those reads return zero rows, so the
+resolver reports "that org does not exist" for every org that does.
+
+Migration `00016` adds a second per-transaction setting, `app.user_id`, and
+makes only those two tables' policies user-aware:
+
+```sql
+-- org_members: keyed on columns and settings only, never a subquery, so orgs'
+-- policy can read it without recursion.
+using (user_id = halyard_current_user_id() or org_id = halyard_current_org_id())
+```
+
+Verified afterwards: a user scope shows exactly the caller's orgs and
+memberships, does **not** expose another user's membership rows, and opens no
+other table — `projects`, `secrets`, `ledger_entries` and `audit_log` all still
+return nothing without an org.
+
+`projects` was deliberately **left** org-keyed. Widening it the same way would
+put a membership subquery on every project read forever, and the measured cost
+is 0.36 ms for the current policy against 2.71 ms for a subquery form. Project
+resolution instead lists the caller's orgs — one cheap user-scoped query — and
+looks the project up inside each. One extra round trip for a single-org user,
+and none once the console sends the org header.
+
+### Creating an org is only possible scoped to its own new id
+
+The policy on `orgs` compares the row's `id` to `app.org_id`, so an unscoped
+`INSERT` is refused: you cannot create an org without saying which org you are
+creating. `POST /v1/orgs` therefore generates the id first and scopes the
+transaction to it.
+
+That is not a workaround, it is a property worth having: an insert naming any
+**other** id is refused, so a request cannot create an org it did not declare.
+Verified in all three directions — unscoped refused, mismatched id refused,
+scoped-to-itself allowed.
+
+### Disclosure: 404 for a non-member, 403 for a member who lacks the role
+
+A 403 for a resource in someone else's org **confirms it exists**. §7.1 makes
+cross-tenant reads indistinguishable from absence on purpose, so "you may not
+see this" and "this does not exist" are the same answer, with the same code and
+the same message — asserted by comparing the two responses byte for byte.
+
+A member who lacks the role gets 403, because they have already been shown the
+org exists. Hiding the reason there would only leave the console unable to
+explain why a button did nothing, and the refusal names the role required.
+
 ## Service containers
 
 Pinned in `compose.yaml` and `.github/workflows/ci.yml`. Verified 2026-09-09 by
