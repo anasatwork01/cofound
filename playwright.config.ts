@@ -87,8 +87,10 @@ export default defineConfig({
   webServer: {
     command: "pnpm --filter @halyard/console start",
     /**
-     * `/` is a 307 to `/new` (SPEC §18's "redirect to last project or /new"),
-     * so readiness is probed against a route that actually returns a page.
+     * Readiness is probed against `/new` rather than `/`. `/` used to be a 307
+     * and is now a page that decides where to send you once the session answers
+     * (task 0.14) — either way, `/new` is the route that is unambiguously a
+     * rendered document with no redirect in front of it.
      */
     url: `${BASE_URL}/new`,
     env: {

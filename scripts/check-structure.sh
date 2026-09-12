@@ -21,7 +21,7 @@ required_files=(
   .tool-versions .gitignore .editorconfig
   README.md CONTRIBUTING.md CLAUDE.md
   compose.yaml .github/workflows/ci.yml
-  scripts/gen.sh scripts/gen_obs.py
+  scripts/gen.sh scripts/gen_obs.py scripts/gen_zod.mjs
   packages/schema/common.schema.json
   packages/schema/agent-events.schema.json
   packages/schema/capability-manifest.schema.json
@@ -69,6 +69,24 @@ if [ "$(grep -c '^## ' docs/SPEC.md)" -ne 24 ]; then
   echo "  Section numbers are cited throughout the codebase; renumbering breaks them."
   fail=1
 fi
+
+# The zod schemas SPEC §3.1 puts console forms on. Listed literally rather than
+# read out of scripts/gen_zod.mjs the way the gen_obs.py outputs below are: that
+# script imports json-schema-to-zod, yaml and prettier at module scope, and this
+# check runs in a CI job that installs no dependencies. The two lists are held
+# together by packages/schema/tests/zod-generator.test.ts, which asserts this
+# array against `gen_zod.mjs --outputs` in a job that does have them.
+zod_outputs=(
+  packages/schema/gen/zod/common.ts
+  packages/schema/gen/zod/api-v1.ts
+)
+for out in "${zod_outputs[@]}"; do
+  if [ ! -f "$out" ]; then
+    echo "  MISSING FILE  $out (run 'make gen')"; fail=1
+  elif ! head -5 "$out" | grep -qi 'DO NOT EDIT'; then
+    echo "  $out is a scripts/gen_zod.mjs output but is not marked DO NOT EDIT"; fail=1
+  fi
+done
 
 # Every file scripts/gen_obs.py writes must exist and must say so. A generated
 # file that someone hand-edits and un-marks is a copy of the redaction denylist

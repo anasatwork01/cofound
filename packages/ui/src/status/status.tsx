@@ -45,14 +45,26 @@ const STATE_WORD: Record<StatusState, string> = {
 
 /**
  * Colour is never the only carrier (SPEC §18 accessibility). Each state has a
- * silhouette that survives greyscale and any form of colour blindness:
- * diamond, triangle, disc. They are distinguishable at 10px, which a hue shift
- * is not.
+ * silhouette that survives greyscale and any form of colour blindness, and the
+ * three are distinguishable at 10px, which a hue shift is not.
+ *
+ * The mapping is the approved mockup's, not this file's invention — SPEC §3.1,
+ * `docs/mockup.html`, the `.pip` block:
+ *
+ *   violet   circle     the agent owns this
+ *   amber    triangle   this is waiting on you
+ *   teal     square     this is live
+ *
+ * It used to be diamond / triangle / disc here, which put a circle on `live`
+ * and left `agent` with a shape the mockup never draws — so the badge and the
+ * project rail, which teaches the same three marks before they are needed,
+ * taught two different alphabets. The square is also the radius rule in
+ * miniature: `live` is a fact you read, and facts carry no radius.
  */
 const GLYPH: Record<StatusState, ReactNode> = {
-  agent: <path d="M6 1L11 6L6 11L1 6Z" />,
+  agent: <circle cx="6" cy="6" r="5" />,
   waiting: <path d="M6 1L11 10H1Z" />,
-  live: <circle cx="6" cy="6" r="5" />,
+  live: <rect x="1" y="1" width="10" height="10" />,
 }
 
 /**
@@ -71,6 +83,26 @@ const TONE: Record<StatusState, string> = {
 }
 
 /**
+ * The chip itself.
+ *
+ * Operable-looking, so radius-sm — 8px since the warming, which on a 20px chip
+ * reads as a soft capsule rather than as a box.
+ *
+ * The HEIGHT is deliberately not stepped up with the rest of the register. This
+ * badge is chrome as often as it is content: the credit gauge puts one inside
+ * the top bar, and a taller chip stops the gauge's two rows fitting the 52px bar
+ * the approved mockup fixes. The room went sideways instead — 12px of side
+ * padding, and the mockup's own space-2 rhythm between the mark and the word.
+ *
+ * And no half-step spacing, anywhere the gauge can render this. A half-step
+ * lands in the class name, the class name lands in the DOM, and
+ * `credit-gauge.test.tsx` reads the rendered HTML for a digit-dot-digit to hold
+ * SPEC §16.6's "never display fractions" — so a chip inside the gauge would fail
+ * a credits test for a reason that has nothing to do with credits.
+ */
+const CHIP = "inline-flex items-center gap-2 rounded-sm px-3 py-1 text-xs leading-none font-medium"
+
+/**
  * One badge, three states, no escape hatch.
  *
  * Renders as a plain inline element with no ARIA role: it is a label, not a
@@ -81,10 +113,7 @@ const TONE: Record<StatusState, string> = {
 export function Status({ state, children }: StatusProps) {
   const word = STATE_WORD[state]
   return (
-    <span
-      data-state={state}
-      className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 text-xs leading-none font-medium ${TONE[state]}`}
-    >
+    <span data-state={state} className={`${CHIP} ${TONE[state]}`}>
       <svg
         width="10"
         height="10"

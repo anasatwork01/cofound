@@ -2,6 +2,18 @@ import { cleanup, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactElement } from "react"
 
+/**
+ * `next/navigation` is a runtime the App Router provides, not a module a unit
+ * test has. The screens added in task 0.14 route after a mutation or after the
+ * session answers, so they read it; nothing here asserts on navigation, which
+ * is what their own test files are for.
+ */
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/",
+  useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), back: vi.fn() }),
+}))
+
 import NewProjectPage from "@/app/new/page"
 import BuilderPage from "@/app/p/[project]/page"
 import FilesPage from "@/app/p/[project]/files/page"
@@ -14,8 +26,11 @@ import CreditsPage from "@/app/settings/credits/page"
 import TeamPage from "@/app/settings/team/page"
 import ConnectionsPage from "@/app/settings/connections/page"
 import NotFound from "@/app/not-found"
+import HomePage from "@/app/page"
+import SignInPage from "@/app/signin/page"
+import NewOrgPage from "@/app/orgs/new/page"
 
-import { renderWithQuery } from "@/test-utils"
+import { renderWithQuery, sessionBody, stubApi } from "@/test-utils"
 
 /**
  * Every screen SPEC §18 names, rendered, and held to §18's copy rules.
@@ -55,18 +70,16 @@ const GIT_VOCABULARY =
 const ARROW_IN_A_BUTTON = /→/
 
 beforeEach(() => {
-  // /new queries `GET /templates` and `GET /auth/session` for real. Nothing in
-  // a unit test may reach the network, and an unstubbed fetch here would try.
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(
-      async () =>
-        new Response(JSON.stringify({ templates: [] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
-    ),
-  )
+  // `/new` queries three endpoints for real — the session, this org's projects
+  // and the templates. Nothing in a unit test may reach the network, and each
+  // path is answered with its OWN shape: one stub returning `{templates: []}`
+  // to all three is how `GET /auth/session` came to be answered with a session
+  // that had no user and no orgs in it, which every assertion then ran against.
+  stubApi({
+    "/auth/session": { body: sessionBody([{ slug: "acme", name: "Acme" }]) },
+    "/projects": { body: { projects: [], page: { has_more: false } } },
+    "/templates": { body: { templates: [] } },
+  })
 })
 
 afterEach(() => {
@@ -124,5 +137,59 @@ describe("empty states", () => {
       "href",
       "/settings/connections",
     )
+  })
+})
+
+/**
+ * The three screens task 0.14 added, held to the same copy rules.
+ *
+ * A separate list from `SCREENS` above, which is SPEC §18's own twelve. These
+ * are not empty states — a sign-in form and an org form are screens with
+ * exactly one thing to do on them — so the "invitation to act" assertion that
+ * runs over §18's screens does not apply, and asserting it here would only
+ * teach someone to pad the copy with a keyword.
+ */
+const ADDED_SCREENS: Screen[] = [
+  { name: "/", heading: "Opening Halyard", element: <HomePage />, needsQuery: true },
+  { name: "/signin", heading: "Sign in", element: <SignInPage />, needsQuery: true },
+  {
+    name: "/orgs/new",
+    heading: "Create an organisation",
+    element: <NewOrgPage />,
+    needsQuery: true,
+  },
+]
+
+describe.each(ADDED_SCREENS)("$name", (screenUnderTest) => {
+  it("opens with exactly one heading, and it is the screen's own name", () => {
+    show(screenUnderTest)
+    const headings = screen.getAllByRole("heading", { level: 1 })
+    expect(headings).toHaveLength(1)
+    expect(headings[0]).toHaveTextContent(screenUnderTest.heading)
+  })
+
+  it("follows §18's copy rules", () => {
+    const text = show(screenUnderTest)
+    expect(text).not.toMatch(APOLOGY)
+    expect(text).not.toMatch(GIT_VOCABULARY)
+    expect(text).not.toMatch(ARROW_IN_A_BUTTON)
+    expect(text).not.toMatch(/[A-Z]{4,}/)
+    expect(text.toLowerCase()).not.toMatch(/\btodo\b|lorem ipsum|coming soon|under construction/)
+  })
+})
+
+describe("the sign-in screen", () => {
+  it("does not ask for a password, because SPEC §8 has none", () => {
+    show({ name: "/signin", heading: "Sign in", element: <SignInPage />, needsQuery: true })
+    expect(document.querySelector('input[type="password"]')).toBeNull()
+    expect(screen.getByLabelText("Email address")).toBeInTheDocument()
+  })
+
+  it("offers SPEC §8's other way in", () => {
+    show({ name: "/signin", heading: "Sign in", element: <SignInPage />, needsQuery: true })
+    const google = screen.getByRole("link", { name: "Continue with Google" })
+    // A full-page navigation to the API, never a fetch: the endpoint answers
+    // 303 to Google and sets the CSRF and PKCE cookies on the way.
+    expect(google.getAttribute("href")).toContain("/auth/google/start")
   })
 })

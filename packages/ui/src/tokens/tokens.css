@@ -171,16 +171,19 @@
 
   /* Radius encodes what a thing IS, not how new the design is:
        0     instruments and data surfaces - you read these. The gauge, pips,
-             the preview frame, table rows, the chat column. Not declared
-             because it is the absence of a radius.
+             the preview frame. Not declared, because it is the ABSENCE of a
+             radius: a meter with rounded ends is unreadable at low fill.
        sm    anything you operate - buttons, inputs, selects, chips.
-       md    anything that floats above the page - menus, dialogs, toasts.
-     lg is declared because the contract carries three; nothing uses it, and
-     inventing a job for it would be inventing a fourth tier. */
+       md    panels and cards - the things content sits inside.
+       lg    anything that floats above the page - menus, dialogs, toasts.
+
+     The scale moved up a step for the softer register (3/8/12 -> 8/12/16).
+     The RULE did not: what carries a radius, and why, is unchanged, which is
+     what kept this a token edit rather than a component sweep. */
   --radius-*: initial;
-  --radius-sm: 0.1875rem; /* 3px */
-  --radius-md: 0.5rem; /* 8px */
-  --radius-lg: 0.75rem; /* 12px - declared, unused */
+  --radius-sm: 0.5rem; /* 8px */
+  --radius-md: 0.75rem; /* 12px */
+  --radius-lg: 1rem; /* 16px */
 
   /* Tailwind's dynamic spacing multiplier. Set to the same 4px grid as
      --space-* below, so `p-4` and `var(--space-4)` are the same length and

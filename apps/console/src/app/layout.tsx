@@ -8,6 +8,7 @@ import type { ReactNode } from "react"
 // unknown state until task 4.9 gives it something real to read.
 import { TopBar } from "@halyard/ui"
 import { mono, sans } from "./fonts"
+import { ConsoleContext } from "@/components/console-context"
 import { Providers } from "@/providers/providers"
 
 export const metadata: Metadata = {
@@ -32,7 +33,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             Skip to content
           </a>
 
-          <TopBar />
+          {/* The switcher goes in the slot the bar left open for it: this
+              layout is a Server Component, so the org control has to arrive as
+              a node rather than as a callback prop. It renders nothing until
+              the session has answered — see `console-context.tsx`. */}
+          <TopBar contextSlot={<ConsoleContext />} />
 
           <main id="main">{children}</main>
 

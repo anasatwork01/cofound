@@ -13,6 +13,15 @@
     "./agent-events": "./gen/typescript/agent-events.ts",
     "./capability-manifest": "./gen/typescript/capability-manifest.ts",
     "./meters": "./gen/typescript/meters.ts",
-    "./sandboxd-api": "./gen/typescript/sandboxd-api.ts"
+    "./sandboxd-api": "./gen/typescript/sandboxd-api.ts",
+    "./zod/common": "./gen/zod/common.ts",
+    "./zod/api-v1": "./gen/zod/api-v1.ts"
+  },
+  "dependencies": {
+    "zod": "4.6.2"
+  },
+  "devDependencies": {
+    "vitest": "5.0.0",
+    "yaml": "2.9.1"
   }
 }

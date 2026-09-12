@@ -77,10 +77,28 @@
     color-scheme: light;
   }
 
+  /*
+   * The base of the type scale, set once.
+   *
+   * `--text-base` is 15px and every other step is derived from it at 1.125, but
+   * Tailwind's preflight leaves `body` at the browser's 16px — so anything that
+   * did not spell out a `text-*` utility rendered one step off the scale the
+   * whole design is built on, and nothing could fail: 16px next to 15px looks
+   * like a font, not like a bug. The line height is the mockup's 1.55 for the
+   * same reason, and is written as a number because the line-height half of a
+   * `--text-*` step is not one of the names the token contract admits —
+   * `tests/console/shell-structure.test.ts` fails on it, including in a comment
+   * like this one, which is how this sentence came to be phrased the long way.
+   *
+   * `rem` throughout, and the root font size is left alone: a user who has set
+   * a larger default gets a larger console.
+   */
   body {
     background-color: var(--color-surface);
     color: var(--color-ink);
     font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: 1.55;
     -webkit-font-smoothing: antialiased;
   }
 }

@@ -37,6 +37,11 @@ type RouterConfig struct {
 	MaxBodyBytes    int64
 	ReadinessDetail bool
 
+	// CORS is off unless a service names a browser origin. Zero value means no
+	// CORS header is ever emitted, which is right for gitd, aigw and mcp: no
+	// browser talks to them.
+	CORS CORSConfig
+
 	// PublicEndpoint feeds otelhttp.WithPublicEndpointFn, which applies
 	// trace.WithNewRoot() and demotes an untrusted caller's span context to a
 	// Link. That is the SPEC 17 sandbox trust-boundary control: a sandbox can
@@ -101,6 +106,13 @@ func Router(cfg RouterConfig) *Mux {
 	root.Use(LogFields)
 	root.Use(AccessLog(log))
 	root.Use(Recover(cfg.Errors, cfg.PanicHook))
+	// On the ROOT, so it covers Public, Authed and Stream alike and, crucially,
+	// runs before the Authed subtree's authentication. A browser sends a
+	// preflight with no cookie, so an OPTIONS that reaches auth is answered 401
+	// and the real request never happens — presenting as a bare "CORS blocked"
+	// with nothing pointing at auth. Inside Recover so a panic still renders the
+	// error envelope, and after AccessLog so a preflight is visible in the log.
+	root.Use(CORS(cfg.CORS))
 
 	m := &Mux{Root: root, cfg: cfg}
 

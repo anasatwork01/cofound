@@ -47,6 +47,13 @@ export interface TopBarProps {
  */
 const FOCUS_RING = "rounded-sm outline-focus focus-visible:outline-2 focus-visible:outline-offset-2"
 
+/**
+ * Where you are, in the mockup's crumb voice: `text-sm` muted beside a wordmark
+ * that is now `text-lg` at 700. The two sizes are two steps apart on a
+ * seven-step scale, which is the whole hierarchy — there is no rule, no plane
+ * and no shadow between them, because the warmer ramp spans about five points
+ * of lightness and cannot carry a hierarchy by luminance any more.
+ */
 function Context({
   org,
   project,
@@ -56,31 +63,58 @@ function Context({
 }) {
   if (org === undefined && project === undefined) return null
   return (
-    <p className="flex min-w-0 items-center gap-2 text-sm">
+    <p className="flex min-w-0 items-baseline gap-2 text-sm">
       {org !== undefined ? <span className="truncate text-ink-muted">{org}</span> : null}
       {org !== undefined && project !== undefined ? (
         <span aria-hidden="true" className="text-ink-muted">
           /
         </span>
       ) : null}
-      {project !== undefined ? <span className="truncate text-ink">{project}</span> : null}
+      {project !== undefined ? (
+        <span className="truncate font-medium text-ink">{project}</span>
+      ) : null}
     </p>
   )
 }
 
 export function TopBar({ credits = UNKNOWN_CREDITS, org, project, contextSlot }: TopBarProps) {
   return (
-    <header className="flex h-14 items-center gap-4 border-b border-border bg-surface-raised px-4">
+    /*
+      52px and fixed, which is the approved mockup's own figure for this bar.
+
+      FIXED, not `min-h` with padding: this is persistent chrome (SPEC §18), and
+      a bar that grew when the credit gauge went low would shove every screen
+      down by the height of a badge at the exact moment the user is reading one.
+      The height therefore has to clear the gauge's tallest state — two rows plus
+      the row gap, 45px with the "Running low" chip in the second — which is why
+      `status.tsx` keeps that chip at 20px rather than stepping it up with the
+      rest of the register.
+
+      The horizontal rhythm is where the room went: space-6 between the identity
+      group and the gauge, against space-4 before.
+    */
+    <header className="flex h-13 items-center gap-6 border-b border-border bg-surface-raised px-4">
       {/*
+        Identity and place, baseline-aligned as one group so the crumb sits on
+        the wordmark's baseline rather than on its centre — the mockup's top bar,
+        exactly. The bar itself stays centre-aligned, for the gauge.
+
         `/` redirects to your last project or to `/new` (SPEC §18), so the mark
         is a link home rather than a decoration. Plain wordmark: the approved
         mockup owns the identity, and a logo invented here would be a thing to
         throw away.
       */}
-      <a href="/" className={`text-sm font-semibold tracking-tight text-ink ${FOCUS_RING}`}>
-        Halyard
-      </a>
-      {contextSlot ?? <Context org={org} project={project} />}
+      <div className="flex min-w-0 items-baseline gap-3">
+        <a
+          href="/"
+          /* `shrink-0`: when the bar runs out of room the place truncates, never
+             the product's own name. */
+          className={`shrink-0 text-lg font-bold tracking-tight text-ink ${FOCUS_RING}`}
+        >
+          Halyard
+        </a>
+        {contextSlot ?? <Context org={org} project={project} />}
+      </div>
       <div className="ml-auto">
         <CreditGauge build={credits.build} runtime={credits.runtime} />
       </div>
