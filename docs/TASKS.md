@@ -30,6 +30,20 @@ External approval queues run in weeks, and phase 6 stalls without them.
 _Accept: a user can sign up, create an org, sign in, and see an empty project
 list on a real deployed URL._
 
+**This criterion is NOT met, and 0.1-0.11 and 0.13 being done does not meet it.**
+Two things stand between here and there, and they are different in kind:
+
+- **0.14** - nothing connects the console to the API. Sign-in, org creation and
+  the project list all exist on the API side (0.7, 0.9) and as empty screens on
+  the console side (0.11), and no task was ever assigned the join. Discovered by
+  trying to perform the acceptance criterion by hand.
+- **0.12** - "on a real deployed URL" needs SPEC §21 decision 1 and a Cloudflare
+  account. Blocked on a human, not on work.
+
+Everything the criterion names works today via `curl` against a local `api`:
+sign in with a magic link, create an org, create a project, list projects. What
+is missing is a user interface for any of it.
+
 | ID   | Task                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Depends on           | Status      |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- | ----------- |
 | 0.1  | Monorepo skeleton, toolchain pins, `make doctor` / `make verify`, opencode pinned as a submodule                                                                                                                                                                                                                                                                                                                                                                         | -                    | **done**    |
@@ -45,6 +59,7 @@ list on a real deployed URL._
 | 0.11 | Console shell: Next.js App Router, Tailwind token layer extracted from `docs/mockup.html`, SPEC §18 route skeleton, TanStack Query, Zustand, top-bar chrome                                                                                                                                                                                                                                                                                                              | 0.3, L.5, §21.9      | **done**    |
 | 0.12 | First deployed environment: console on Workers via OpenNext (**done**: staging + production wrangler envs, gated deploy workflow, verified OpenNext build); service images **built and published to GHCR** on every merge (**done**, host-agnostic); one Go service on the chosen container host (**blocked on §21.1** — the decision, plus an account). **Hyperdrive is not needed here** - it is a Workers binding and the console never touches Postgres (§22 item 4) | 0.11, §21.1, §22.1-2 | blocked\*\* |
 | 0.13 | Sentry for console and services; axe accessibility checks in CI. Console is **client-side only** - the server SDK measured +121% on the Worker bundle against a 1s startup-CPU ceiling and is not free with an unset DSN, so it waits on a deploy measurement (see `docs/verified.md`). Go services: errors only, no DSN means no SDK. axe runs at **both** unit and real-browser tiers, each with anti-vacuity invariants                                               | 0.2, 0.11            | **done**    |
+| 0.14 | **Console to API integration**: sign-in screen (magic link + Google), org creation, project list bound to real data, session-aware redirects. This is what phase 0's acceptance criterion actually requires, and no other task owns it - 0.7 and 0.9 built the API, 0.11 built the shell, and the seam between them was never assigned. Needs zod generation added to `make gen` first (SPEC §3.1 requires it and task 0.3 emitted types only)                           | 0.9, 0.11            | todo        |
 
 \*\* **0.12 is half-shipped and blocked on one decision.** The console side is
 built: staging and production wrangler environments, a deploy workflow that is
