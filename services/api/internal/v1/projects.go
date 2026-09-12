@@ -3,6 +3,7 @@ package v1
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -62,20 +63,25 @@ func (h *Handlers) createProject(w http.ResponseWriter, r *http.Request) error {
 		// ambiguous about which the agent should honour.
 		return errs.Invalid("Send either a template version or a prompt, not both.").
 			WithFix("Pick a template, or describe what you want built.")
-	case hasPrompt && raw.Name == "":
-		// §7.1's prompt variant does not require a name; the agent names it.
-		// Until task 1.x does, a placeholder beats an empty string in the UI.
-		raw.Name = "Untitled project"
 	}
 
+	// §7.1's prompt variant does not require a name; the agent names it. Until
+	// task 1.x does, a placeholder beats an empty string in the UI — but a
+	// placeholder is OURS, not the caller's, so a collision on it must not come
+	// back as "that name is taken". See the numbering below.
+	generated := hasPrompt && strings.TrimSpace(raw.Name) == ""
+
 	name := strings.TrimSpace(raw.Name)
-	if name == "" {
-		return errs.InvalidField("name", "is required")
-	}
-	slug := slugify(name)
-	if !validSlug(slug) {
-		return errs.InvalidField("name",
-			"must contain letters or digits so a project slug can be derived from it")
+	slug := ""
+	if !generated {
+		if name == "" {
+			return errs.InvalidField("name", "is required")
+		}
+		slug = slugify(name)
+		if !validSlug(slug) {
+			return errs.InvalidField("name",
+				"must contain letters or digits so a project slug can be derived from it")
+		}
 	}
 
 	var templateVersion *uuid.UUID
@@ -113,15 +119,17 @@ func (h *Handlers) createProject(w http.ResponseWriter, r *http.Request) error {
 			created   time.Time
 			branchID  uuid.UUID
 			defBranch string
+			err       error
 		)
-		err := tx.QueryRow(ctx, `
-			insert into projects (org_id, name, slug, template_version_id)
-			values ($1, $2, $3, $4)
-			returning id, created_at, default_branch`,
-			m.OrgID, name, slug, templateVersion).Scan(&id, &created, &defBranch)
+		if generated {
+			id, created, defBranch, name, slug, err = insertGeneratedProject(ctx, tx, m.OrgID, templateVersion)
+		} else {
+			id, created, defBranch, err = insertProject(ctx, tx, m.OrgID, name, slug, templateVersion)
+		}
 		if err != nil {
 			return err
 		}
+		out.Name = name
 		// The default branch row exists from the start. A project with no
 		// branch is a project the session endpoints cannot open, and creating
 		// it lazily means every caller has to handle the gap.
@@ -149,6 +157,88 @@ func (h *Handlers) createProject(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	return httpx.JSON(w, http.StatusCreated, out)
+}
+
+// insertProject writes the row and returns what the response needs from it.
+//
+// It takes a pgx.Tx rather than the concrete transaction so the generated-name
+// path can hand it a SAVEPOINT: a unique violation aborts a Postgres
+// transaction outright, so retrying a name inside the same transaction is only
+// possible if each attempt can be rolled back on its own.
+func insertProject(
+	ctx context.Context, tx pgx.Tx, orgID uuid.UUID, name, slug string, templateVersion *uuid.UUID,
+) (id uuid.UUID, created time.Time, defBranch string, err error) {
+	err = tx.QueryRow(ctx, `
+		insert into projects (org_id, name, slug, template_version_id)
+		values ($1, $2, $3, $4)
+		returning id, created_at, default_branch`,
+		orgID, name, slug, templateVersion).Scan(&id, &created, &defBranch)
+	return id, created, defBranch, err
+}
+
+// generatedSlug is the stem every name this file invents reduces to. Kept next
+// to generatedName so the two cannot drift: the seed query below matches on the
+// stem, and a rename that missed it would silently restart the numbering at 1.
+const generatedSlug = "untitled-project"
+
+// generatedName is the nth placeholder: "Untitled project", then "Untitled
+// project 2". Numbered rather than suffixed with random characters because the
+// name is shown in the project list, where three rows reading "Untitled
+// project" are worse than a slug collision ever was.
+func generatedName(n int) string {
+	if n <= 1 {
+		return "Untitled project"
+	}
+	return fmt.Sprintf("Untitled project %d", n)
+}
+
+// insertGeneratedProject names a prompt-created project and inserts it,
+// stepping the number until one is free.
+//
+// The count is a SEED, not a reservation: another create in the same org can
+// take the number between the select and the insert. The savepoint retry is
+// what makes that safe, and it is why the loop does not simply trust the
+// count. Bounded so a pathological org cannot spin here.
+func insertGeneratedProject(
+	ctx context.Context, tx pgx.Tx, orgID uuid.UUID, templateVersion *uuid.UUID,
+) (id uuid.UUID, created time.Time, defBranch, name, slug string, err error) {
+	// No org predicate: row-level security supplies it, exactly as in
+	// listProjects. Archived projects keep their slug, so they count too —
+	// their row still occupies (org_id, slug).
+	var taken int
+	if err = tx.QueryRow(ctx, `
+		select count(*) from projects where slug = $1 or slug like $1 || '-%'`,
+		generatedSlug).Scan(&taken); err != nil {
+		return id, created, defBranch, name, slug, err
+	}
+
+	const maxAttempts = 8
+	for attempt := range maxAttempts {
+		name = generatedName(taken + 1 + attempt)
+		slug = slugify(name)
+
+		// pgx opens a savepoint when Begin is called on a live transaction.
+		var sp pgx.Tx
+		if sp, err = tx.Begin(ctx); err != nil {
+			return id, created, defBranch, name, slug, err
+		}
+		id, created, defBranch, err = insertProject(ctx, sp, orgID, name, slug, templateVersion)
+		if err == nil {
+			err = sp.Commit(ctx)
+			return id, created, defBranch, name, slug, err
+		}
+		if rbErr := sp.Rollback(ctx); rbErr != nil {
+			return id, created, defBranch, name, slug, rbErr
+		}
+		if !db.IsUniqueViolation(err) {
+			return id, created, defBranch, name, slug, err
+		}
+	}
+	// Every candidate was taken by a concurrent create. Returning the unique
+	// violation lets the caller render its 409 — misleading for a generated
+	// name, but this is unreachable without eight simultaneous creates, and a
+	// wrong error beats an invented name that is not the one inserted.
+	return id, created, defBranch, name, slug, err
 }
 
 // listProjects implements GET /v1/projects.
