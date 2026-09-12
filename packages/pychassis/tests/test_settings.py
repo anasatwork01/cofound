@@ -206,6 +206,39 @@ def test_the_boot_line_fingerprints_secrets_rather_than_printing_them() -> None:
     assert resolved["OTEL_EXPORTER_OTLP_HEADERS"].startswith("set (sha256:")
 
 
+TEST_DSN = "https://0123456789abcdef0123456789abcdef@o0.ingest.example.invalid/42"
+
+
+def test_the_sentry_dsn_is_fingerprinted_not_printed() -> None:
+    """Bound through the loader rather than left for an SDK to read, so it
+    lands in the one boot line that records effective configuration -- which
+    must stay comparable between two replicas and never enough to authenticate
+    with."""
+    s = load(ChassisSettings, environ={}, service="test", SENTRY_DSN=TEST_DSN)
+    assert s.sentry_dsn == TEST_DSN, "the reporter needs the real value"
+    resolved = s.resolved()
+    assert "0123456789abcdef" not in str(resolved)
+    assert resolved["SENTRY_DSN"].startswith("set (sha256:")
+
+
+def test_no_sentry_dsn_resolves_to_unset() -> None:
+    """Empty is the only switch the reporter has, in both languages."""
+    s = load(ChassisSettings, environ={}, service="test")
+    assert s.sentry_dsn == ""
+    assert s.resolved()["SENTRY_DSN"] == "unset"
+
+
+@pytest.mark.parametrize("bad", ["not-a-url", "ftp://key@example.invalid/1"])
+def test_a_malformed_sentry_dsn_is_a_problem(bad: str) -> None:
+    """A service that starts on a typo'd DSN reports nothing, forever,
+    silently. Matches the Go loader's SecretURL check on the same key."""
+    with pytest.raises(ConfigError) as exc:
+        load(ChassisSettings, environ={}, service="test", SENTRY_DSN=bad)
+    message = str(exc.value)
+    assert "SENTRY_DSN" in message
+    assert bad not in message, "a problem must describe the shape wanted, never the value"
+
+
 def test_the_boot_line_renders_durations_the_way_go_does() -> None:
     resolved = load(ChassisSettings, environ={}, service="test").resolved()
     assert resolved["HTTP_READ_TIMEOUT"] == "30s"

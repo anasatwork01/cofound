@@ -10,6 +10,8 @@ go 1.27.1
 
 require (
 	github.com/anasatwork01/cofound/packages/schema/gen/go v0.0.0
+	github.com/getsentry/sentry-go v0.49.0
+	github.com/getsentry/sentry-go/otel v0.49.0
 	github.com/go-chi/chi/v5 v5.3.2
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.71.0
 	go.opentelemetry.io/otel v1.46.0

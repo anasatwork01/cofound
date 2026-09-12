@@ -2209,3 +2209,107 @@ of accidentally depending on data surviving a restart.
 
 Not yet installed, needed by the tasks that introduce them: `goose` (task 0.6),
 `wrangler` (task 0.10), `modal` (task 1.3).
+
+## `getsentry/sentry-go` v0.49.0 — the Go services half of SPEC §17.3
+
+Verified 2026-09-12 for task 0.13. CLAUDE.md working agreement 2 applies: this
+is a new vendor dependency that every Go service links and that is handed a
+process's errors. Every claim below was read from the **published module in the
+Go module cache** — `sentry-go@v0.49.0` and `sentry-go/otel@v0.49.0` — and the
+two behavioural ones were reproduced in `packages/chassis/observability/sentry`
+tests rather than taken from documentation.
+
+### Cost
+
+| Measure                             | Finding                                                                  |
+| ----------------------------------- | ------------------------------------------------------------------------ |
+| Modules added to `packages/chassis` | **2**, both direct. No new transitive module — see the `go.mod` diff     |
+| `services/api` binary               | **+0.92 MB** (31.34 MB → 32.26 MB), measured with and without the import |
+
+Cheap enough that the `telemetry/otlp` "import it from the service main only"
+rule is a matter of consistency here, not of weight. The package is still a leaf
+for the same reason: a service that never wants it links none of it.
+
+### `sentry.Init("")` is not a no-op — it costs two goroutines per process
+
+The single most important fact on this page. With an empty DSN `NewClient` still
+builds the telemetry processor, and `internal/telemetry.Scheduler.Start` spawns
+a worker goroutine **plus** a second goroutine holding a `time.NewTicker(100 *
+time.Millisecond)`, both for the life of the process. Nothing logs, nothing
+errors, nothing behaves differently — and that is every service, in every
+environment with no DSN: local development, CI, and any self-hosted deploy.
+
+**Measured, not inferred**: planting the call in `Init` makes
+`TestNoDSNStartsNoGoroutines` report exactly `2` extra goroutines.
+
+So `observability/sentry.Init` returns a **nil `*Handle`** when no DSN is bound
+and never reaches sentry-go at all. `Factory` converts that to a nil
+_interface_, because a typed nil would make every "is a reporter configured?"
+check answer yes.
+
+### `&sentry.DataCollection{}` turns cookies and all three HTTP bodies ON
+
+The 0.48.0 changelog recommends passing `&sentry.DataCollection{}` to adopt the
+new granular collection options. **Do not.** `NewClient` resolves the field two
+different ways:
+
+| `ClientOptions.DataCollection`      | Resolves through        | Cookies              | HTTP bodies                                              | `UserInfo` |
+| ----------------------------------- | ----------------------- | -------------------- | -------------------------------------------------------- | ---------- |
+| `nil` (with `SendDefaultPII` false) | `legacyDataCollection`  | `CollectionOff`      | none                                                     | false      |
+| `&DataCollection{}`                 | `resolveDataCollection` | `CollectionDenyList` | `incomingRequest`, `outgoingRequest`, `incomingResponse` | true       |
+
+The console's session cookie is a `__Host-` cookie and request bodies carry user
+content, so the one-line "upgrade" is what ships both to a third party. That is
+a **SPEC §17.3 violation** ("no secret values and no user content"), not a
+preference. Both fields stay at their zero values, and
+`TestResolvedDataCollectionSendsNoCookiesAndNoBodies` asserts the **resolved**
+collection so the guard survives a future change to what `nil` means.
+
+### Identity is passed explicitly, or sentry-go invents it
+
+`NewClient` reads `SENTRY_DSN` and `SENTRY_ENVIRONMENT` from the process
+environment when the options are empty, and `defaultRelease()` walks
+`SENTRY_RELEASE`, `GITHUB_SHA` and eleven other CI variables, then
+`debug.ReadBuildInfo`, then **shells out to `git describe --long --always
+--dirty`**. None of those should decide which service, in which environment, at
+which release an incident is filed against. `Environment` and
+`Release` (`service@version+commit`) are therefore always set, and `SENTRY_DSN`
+is bound through `packages/chassis/config` like every other key.
+
+`SENTRYGODEBUG` is read unconditionally inside `NewClient` and cannot be
+disarmed from options. It only enables HTTP dumping to stderr, so it is recorded
+here rather than mitigated.
+
+### `AttachStacktrace: true` is load-bearing, not decorative
+
+`Client.RecoverWithContext` switches on the panic value: an `error` goes to
+`EventFromException` (which derives frames from the error), but a **string** —
+`panic("boom")`, the most common shape — goes to `EventFromMessage`, which
+attaches a stack trace **only when `AttachStacktrace` is true**. Without it the
+headline feature, a Go stack trace on the issue, silently does not happen.
+
+### `Client.Close()` takes no context and can block indefinitely
+
+`Close` hardcodes `5 * time.Second` and spends it twice — `Scheduler.Stop`
+flushes for the timeout and then waits for the worker for the timeout again — so
+the documented worst case is ~10s. **Measured worse**: with a transport that
+never answers, `Close` did not return at all, holding a probe test binary past
+120s. `lifecycle.PhaseTelemetry`'s budget is single-digit seconds with the
+orchestrator's termination grace period behind it, so `Handle.Shutdown` calls
+`FlushWithContext` (which does honour the context) and then runs `Close` on a
+goroutine it **abandons** when the budget expires.
+
+### What was deliberately not adopted
+
+| Module                | Why not                                                                                                                                                              |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sentry-go/otel/otlp` | Sentry tracing is now an OTLP endpoint, which `telemetry.ExporterFactory` already accommodates. Sending spans twice buys nothing                                     |
+| `sentry-go/http`      | `Repanic` defaults to **false**, so it swallows the panic `httpx.Recover` turns into an error envelope, and opens a second `http.server` transaction over otelhttp's |
+| `sentry-go/slog`      | The logging pipeline already redacts and ships; a second sink is a second place for user content to escape                                                           |
+
+The entire OpenTelemetry story is `sentryotel.NewOtelIntegration()` in
+`Integrations`, which resolves the active trace id from the context so a
+captured issue and its trace point at each other. Note
+`sentry-go/otel`'s own `go.mod` carries `replace github.com/getsentry/sentry-go
+=> ../`; a dependency's `replace` is ignored by the main module, so the two
+must be kept on the same version by hand.

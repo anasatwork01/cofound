@@ -4,6 +4,7 @@ package main
 
 import (
 	"github.com/anasatwork01/cofound/packages/chassis"
+	"github.com/anasatwork01/cofound/packages/chassis/observability/sentry"
 	"github.com/anasatwork01/cofound/packages/chassis/telemetry/otlp"
 
 	"github.com/anasatwork01/cofound/services/api/internal/httpapi"
@@ -35,5 +36,15 @@ func main() {
 		// This one line opts api's binary into the OTLP exporter's ~65 modules
 		// and ~10MB. gitd, aigw and mcp choose for themselves.
 		Exporter: otlp.Factory,
+		// And this one into Sentry (SPEC 17.3). It links sentry-go, but it
+		// CONSTRUCTS nothing unless SENTRY_DSN resolves: with no DSN the factory
+		// returns a nil reporter, which is a nil panic hook and a no-op
+		// shutdown. That is deliberate — sentry-go's own Init with an empty DSN
+		// leaves a 100ms ticker running for the life of the process.
+		//
+		// Errors only. Spans already reach Sentry through the OTLP endpoint
+		// above if that is where the collector points, and panics are captured
+		// by the chassis's one recoverer rather than by sentryhttp.
+		Reporter: sentry.Factory,
 	})
 }

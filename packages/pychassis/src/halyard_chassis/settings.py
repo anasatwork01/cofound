@@ -63,12 +63,13 @@ import ipaddress
 import math
 import os
 import re
+import urllib.parse
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Annotated, Any, ClassVar, Literal, Self
 
-from pydantic import BeforeValidator, Field, ValidationError, model_validator
+from pydantic import AfterValidator, BeforeValidator, Field, ValidationError, model_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from pydantic_settings.exceptions import SettingsError
@@ -195,6 +196,28 @@ def parse_bytes(value: Any) -> Any:
 
 
 ByteSize = Annotated[int, BeforeValidator(parse_bytes)]
+
+
+# ------------------------------------------------------------------ Sentry DSN
+
+
+def validate_sentry_dsn(value: Any) -> Any:
+    """Refuse a SENTRY_DSN that is not an absolute http(s) URL.
+
+    Mirrors the Go loader's SecretURL check on the same key, and for the same
+    reason: a DSN that is present but wrong must fail boot rather than start a
+    service that reports nothing, forever, silently. The message describes the
+    shape wanted and never the value received -- the userinfo is an ingest key.
+    """
+    if not isinstance(value, str) or value == "":
+        return value
+    parsed = urllib.parse.urlsplit(value)
+    if parsed.scheme not in ("https", "http") or not parsed.hostname:
+        raise ValueError("expect an absolute URL with scheme https or http")
+    return value
+
+
+SentryDSN = Annotated[str, AfterValidator(validate_sentry_dsn)]
 
 
 def _split_csv(value: Any) -> Any:
@@ -409,7 +432,7 @@ class ChassisSettings(BaseSettings):
 
     # Variables whose resolved value is fingerprinted rather than logged. The
     # Go loader marks KeyValues secret automatically; this is the explicit list.
-    secret_env: ClassVar[frozenset[str]] = frozenset({"OTEL_EXPORTER_OTLP_HEADERS"})
+    secret_env: ClassVar[frozenset[str]] = frozenset({"OTEL_EXPORTER_OTLP_HEADERS", "SENTRY_DSN"})
 
     # Namespaces this service owns, for unknown-variable detection.
     owned_prefixes: ClassVar[tuple[str, ...]] = (
@@ -465,6 +488,17 @@ class ChassisSettings(BaseSettings):
     otel_shutdown_timeout: Annotated[
         GoDuration, Field(validation_alias="OTEL_SHUTDOWN_TIMEOUT")
     ] = timedelta(seconds=5)
+
+    sentry_dsn: Annotated[SentryDSN, Field(validation_alias="SENTRY_DSN")] = ""
+    """SPEC 17.3's error reporting. Empty means no reporter, and that is the
+    only switch -- see packages/chassis/observability/sentry.Init, where an
+    empty DSN must never reach the SDK because a "disabled" sentry-go client
+    still runs a 100ms ticker for the life of the process.
+
+    Bound here so the two chassis read one manifest. Task 0.13 wires the Go
+    reporter only; no Python service constructs one yet, so on sandboxd and
+    workers this currently resolves and is reported in the boot line and
+    nothing more."""
 
     http_read_header_timeout: Annotated[
         GoDuration, Field(validation_alias="HTTP_READ_HEADER_TIMEOUT")

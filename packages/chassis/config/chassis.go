@@ -60,6 +60,13 @@ type Chassis struct {
 		ShutdownTimeout time.Duration
 	}
 
+	// Sentry is SPEC 17.3's error reporting. DSN empty means no reporter, and
+	// that is the ONLY switch: see observability/sentry.Init for why an empty
+	// DSN must never reach sentry-go.
+	Sentry struct {
+		DSN string
+	}
+
 	HTTP struct {
 		ReadHeaderTimeout time.Duration
 		ReadTimeout       time.Duration
@@ -107,6 +114,13 @@ const (
 	KeyLogLevel  = "LOG_LEVEL"
 	KeyLogFormat = "LOG_FORMAT"
 	KeyLogSource = "LOG_SOURCE"
+
+	// SENTRY_DSN keeps its vendor spelling for the same reason the OTLP keys
+	// do: an operator pasting a DSN out of the Sentry UI should not have to
+	// learn a Halyard synonym. Binding it here rather than letting sentry-go
+	// read the environment itself is what makes it appear in the boot line and
+	// in config validation like every other key.
+	KeySentryDSN = "SENTRY_DSN"
 
 	KeyOTLPEndpoint     = "OTEL_EXPORTER_OTLP_ENDPOINT"
 	KeyOTLPProtocol     = "OTEL_EXPORTER_OTLP_PROTOCOL"
@@ -162,6 +176,16 @@ func (c *Chassis) Bind(l *Loader, d Defaults) {
 	c.OTel.Headers = l.KeyValues(KeyOTLPHeaders)
 	c.OTel.SampleRatio, c.OTel.SampleRatioSet = l.OptionalFloat(KeyOTelSamplerArg, 0, 1)
 	c.OTel.ShutdownTimeout = l.Duration(KeyOTelShutdown, 5*time.Second, time.Second, time.Minute)
+
+	// Validated as a URL here rather than at Init, so a typo is one of the
+	// problems the boot line reports alongside every other bad variable instead
+	// of a separate crash. Fingerprinted rather than echoed: the userinfo is a
+	// write-only ingest key, and there is no diagnostic that needs the value
+	// when "set (sha256:...)" already tells an operator whether two replicas
+	// agree.
+	if u := l.SecretURL(KeySentryDSN, false, "https", "http"); u != nil {
+		c.Sentry.DSN = u.String()
+	}
 
 	c.HTTP.ReadHeaderTimeout = l.Duration(KeyReadHeaderTO, 5*time.Second, time.Second, time.Minute)
 	c.HTTP.ReadTimeout = l.Duration(KeyReadTO, 30*time.Second, time.Second, 10*time.Minute)

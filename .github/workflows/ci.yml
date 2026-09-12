@@ -93,6 +93,14 @@ jobs:
   js:
     name: js
     runs-on: ubuntu-latest
+    # No SENTRYCLI_SKIP_DOWNLOAD here, deliberately. It looks like it would save
+    # the 35 MB `@sentry/cli` binary, and it does not: that binary arrives as the
+    # `@sentry/cli-linux-x64` optionalDependency, which this lockfile pins, and
+    # `@sentry/cli`'s postinstall exits 0 the moment that resolves
+    # (scripts/install.js:325-327). The variable only disables the FALLBACK
+    # download — so setting it would buy nothing and remove the one recovery
+    # path for a missing binary. Trimming the 35 MB is a pnpm
+    # optional-dependency question, and needs its own measurement.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: tv
@@ -111,6 +119,98 @@ jobs:
       # The console shell is only a shell if it builds. Task 0.12 deploys it;
       # this is what stops 0.12 discovering a broken build.
       - run: pnpm --filter @halyard/console build
+      # And `next build` passing is not the same claim as "the Worker bundle
+      # builds". What 0.12 deploys is `.open-next/worker.js`, which the OpenNext
+      # adapter produces by re-bundling for workerd and patching the server — a
+      # second pass with its own failure modes, on input `next build` accepted.
+      # Runs after `build` rather than instead of it so that a plain Next
+      # failure is still reported as one.
+      - run: pnpm --filter @halyard/console cf:build
+
+  # SPEC §18 ends "Verify with axe in CI". This is that job.
+  #
+  # It is separate from `js` rather than folded into it because it needs a
+  # browser and a running server, and because a job that downloads Chromium
+  # should not be able to make a prettier failure take three minutes to report.
+  # The unit tier (`tests/console/contrast.test.ts` and the component axe
+  # checks) needs no job of its own — it rides in `make test-js`.
+  a11y:
+    name: a11y (axe, real browser)
+    runs-on: ubuntu-latest
+    env:
+      # Empty, not merely absent. An empty DSN is how `Sentry.init` is told to
+      # do nothing, and saying so here means a repository- or organisation-level
+      # variable cannot quietly start reporting CI page loads into a real Sentry
+      # project. `NEXT_PUBLIC_*` is inlined at build time, so it has to hold for
+      # the build step below and not only for the server the tests drive.
+      SENTRY_DSN: ""
+      NEXT_PUBLIC_SENTRY_DSN: ""
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: tv
+        run: ./scripts/tool-versions.sh >> "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ steps.tv.outputs.pnpm }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ steps.tv.outputs.nodejs }}
+          cache: pnpm
+
+      # The browser cache is keyed on the Playwright pin READ FROM package.json,
+      # never written here: a key that has to be edited by hand is a key that
+      # eventually serves a browser from a different Playwright than the one
+      # driving it, and that failure is confusing rather than loud. The range
+      # check is the guard — a caret or a range makes "the pinned version"
+      # meaningless as a cache key, so the job stops and says so.
+      - id: pw
+        name: Read the pinned Playwright version
+        run: |
+          v="$(node -p "require('./package.json').devDependencies['@playwright/test']")"
+          case "$v" in
+            "" | *[!0-9.]*)
+              echo "::error::@playwright/test must be pinned exactly; package.json says '$v'"
+              exit 1
+              ;;
+          esac
+          echo "playwright=$v" >> "$GITHUB_OUTPUT"
+
+      # No restore-keys on purpose. A near-miss would restore some other
+      # Playwright's browsers, and the install below would then download the
+      # right ones anyway — paying the download AND carrying a stale cache.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-ms-playwright-${{ steps.pw.outputs.playwright }}
+
+      - run: pnpm install --frozen-lockfile
+
+      # `--only-shell` fetches chromium-headless-shell rather than the full
+      # Chromium: ~117 MiB against ~303 MiB compressed. Measured on
+      # darwin-arm64, what that leaves in the cache is 196 MB of shell plus 3 MB
+      # of ffmpeg the installer pulls regardless and nothing here uses.
+      #
+      # playwright.config.ts deliberately names no `channel`, which is what
+      # makes a headless chromium launch resolve to the shell; `channel:
+      # "chromium"` there would demand the build this step does not fetch.
+      #
+      # Deliberately NOT `--with-deps`: that is `sudo apt-get install` of the
+      # system libraries Chromium links against, on every run, and the
+      # ubuntu-latest image already carries them. If a future runner image drops
+      # one, this fails with the missing library named — add `--with-deps`
+      # then, rather than paying for it every run now against that possibility.
+      - run: pnpm exec playwright install --only-shell chromium
+
+      # Playwright runs TypeScript by transpiling it, which strips types without
+      # checking them, and `tests/e2e` belongs to no workspace package — so
+      # without this step nothing in this repository would ever typecheck the
+      # spec or the config it runs under.
+      - run: pnpm exec tsc -p tests/e2e
+
+      # playwright.config.ts starts `next start`, which serves this output.
+      - run: pnpm --filter @halyard/console build
+
+      - run: pnpm exec playwright test
 
   image:
     name: service image
@@ -258,7 +358,7 @@ jobs:
   ci:
     name: ci
     if: always()
-    needs: [meta, go, python, js, schema, image, integration]
+    needs: [meta, go, python, js, a11y, schema, image, integration]
     runs-on: ubuntu-latest
     steps:
       # A single required status check for branch protection: adding a job above
