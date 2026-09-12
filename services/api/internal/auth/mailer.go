@@ -35,13 +35,26 @@ type LogMailer struct {
 	Log *slog.Logger
 }
 
-// SendMagicLink logs the link at info.
+// SendMagicLink says at info that no mail was sent, and emits the link itself
+// as a separate DEBUG record.
 //
-// The link contains a live single-use credential, so it is marked user content:
-// the chassis redactor replaces it above debug level, and SPEC §17.3 makes
-// raising the level to debug a deliberate privacy action. So a developer sees
-// the link by choosing to, and a misconfigured staging box does not spray them
-// into a log pipeline.
+// The two-record shape is load-bearing, and a single info record does not work.
+// The chassis redactor decides per RECORD, not per logger:
+// `debug := r.Level <= slog.LevelDebug` in logging/guard.go. So user content on
+// an info record is replaced with the omitted marker at every LOG_LEVEL,
+// including debug — which is what this function used to do, making the link
+// unreachable by any means and leaving no way to sign in locally at all. There
+// is no other mailer (docs/open-questions.md Q5), so that was the whole
+// local-development sign-in path.
+//
+// Splitting it keeps both properties that mattered:
+//
+//   - At info, the operator learns mail was not sent and to whom, and the link
+//     is not in the record at all — so a misconfigured staging box cannot spray
+//     live credentials into a log pipeline even in redacted form.
+//   - At debug, the developer who deliberately lowered the level sees the link.
+//     SPEC §17.3 treats that as a privacy action, which is the point: you see it
+//     by choosing to.
 func (m LogMailer) SendMagicLink(ctx context.Context, email, link string) error {
 	log := m.Log
 	if log == nil {
@@ -52,6 +65,12 @@ func (m LogMailer) SendMagicLink(ctx context.Context, email, link string) error 
 		// The address is not user content in the chassis's sense but it is
 		// personal data, and it is the one field that makes the log line useful
 		// to the developer who just typed it.
+		slog.String("email", email),
+	)
+	// Debug, so the redactor unwraps it. At info this record is filtered out
+	// before the guard ever sees it.
+	log.DebugContext(ctx, "magic link",
+		slog.String(logkey.Component, "auth"),
 		slog.String("email", email),
 		logging.User("magic_link", link),
 	)
