@@ -17,9 +17,25 @@ vi.mock("@/app/fonts", () => ({
 
 /** `TabNav` marks the current tab from the pathname. */
 const pathname = vi.hoisted(() => ({ current: "/" }))
-vi.mock("next/navigation", () => ({ usePathname: () => pathname.current }))
+/**
+ * `/auth/callback` reads the query string the API put in the emailed link, and
+ * three screens route after the session answers. `next/navigation` is a runtime
+ * the App Router provides rather than a module, so both are supplied here —
+ * with the search params mutable, because the callback's three arrivals
+ * (a token, an error code, neither) are three different documents to audit.
+ */
+const search = vi.hoisted(() => ({ current: "" }))
+vi.mock("next/navigation", () => ({
+  usePathname: () => pathname.current,
+  useSearchParams: () => new URLSearchParams(search.current),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), back: vi.fn() }),
+}))
 
 import RootLayout from "@/app/layout"
+import HomePage from "@/app/page"
+import SignInPage from "@/app/signin/page"
+import AuthCallbackPage from "@/app/auth/callback/page"
+import NewOrgPage from "@/app/orgs/new/page"
 import NewProjectPage from "@/app/new/page"
 import BuilderPage from "@/app/p/[project]/page"
 import FilesPage from "@/app/p/[project]/files/page"
@@ -39,6 +55,7 @@ import { TabNav } from "@/components/tab-nav"
 import { projectNav, routes, settingsNav } from "@/lib/routes"
 import { useBuilderStore } from "@/store/builder-store"
 import { CreditGauge, Status, TopBar, type MeterReading } from "@halyard/ui"
+import { sessionBody, stubApi } from "@/test-utils"
 
 /**
  * SPEC §18: "Verify with axe in CI."
@@ -109,6 +126,13 @@ const OVERDRAWN: MeterReading = { kind: "measured", used: 5200, allowance: 5000,
  * so a thirteenth route cannot be added without a row here.
  */
 const FIXTURES: readonly Fixture[] = [
+  { name: "/", route: routes.home, element: <HomePage /> },
+  { name: "/signin", route: routes.signIn, element: <SignInPage /> },
+  // The error arrival, because it is the only one of the three that stands
+  // still: the other two redirect as soon as their effect runs, and auditing a
+  // document on its way somewhere else audits nothing.
+  { name: "/auth/callback", route: routes.authCallback, element: <AuthCallbackPage /> },
+  { name: "/orgs/new", route: routes.newOrg, element: <NewOrgPage /> },
   { name: "/new", route: routes.newProject, element: <NewProjectPage /> },
   { name: "/p/[project]", route: routes.builder("demo"), element: <BuilderPage /> },
   { name: "/p/[project]/files", route: routes.files("demo"), element: <FilesPage /> },
@@ -219,6 +243,36 @@ function audit(): Promise<AxeResults> {
   return axe.run(document.body, A11Y)
 }
 
+/**
+ * Let the stubbed requests resolve and React commit, BEFORE axe looks.
+ *
+ * Not a flake workaround. axe builds its flat tree at the start of a run and
+ * evaluates rules against it afterwards, so a component that swaps a loading
+ * state for a loaded one in between leaves rules judging a document that no
+ * longer exists. Measured on `/new` while the project list was mid-swap:
+ * `heading-order` came back INCOMPLETE — "Unable to determine previous
+ * heading" — which is neither a pass nor a failure, and the anti-vacuity
+ * assertion below treats an undecided rule as an unaudited one, correctly.
+ *
+ * It is also the more honest audit. A skeleton is on screen for a few hundred
+ * milliseconds; the state the reader actually meets is the settled one, and
+ * before this the suite was auditing whichever of the two it happened to catch.
+ */
+async function settle(): Promise<void> {
+  // Looped, because the requests are CHAINED: `/new` cannot ask for the project
+  // list until the session has told it which organisation, so one tick settles
+  // the first round trip and leaves the second in flight. Measured: with a
+  // single tick the `/new` audit reported `heading-order` INCOMPLETE about half
+  // the time, which is the worst kind of green.
+  for (let tick = 0; tick < 5; tick += 1) {
+    await act(async () => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0)
+      })
+    })
+  }
+}
+
 /** Rule ids that produced a result — as opposed to going inapplicable. */
 function executedIn(results: AxeResults): readonly string[] {
   return [...results.passes, ...results.violations, ...results.incomplete].map((rule) => rule.id)
@@ -237,21 +291,31 @@ const audited: string[] = []
 
 beforeEach(() => {
   pathname.current = routes.builder("demo")
+  // A reason code, so `/auth/callback` renders the one arrival that holds
+  // still. Every other fixture ignores the query string.
+  search.current = "error=declined"
   act(() => {
     useBuilderStore.getState().reset()
   })
-  // `/new` reads `GET /templates` for real. Nothing in a unit test may reach
-  // the network, and an unstubbed fetch here would try.
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(
-      async () =>
-        new Response(JSON.stringify({ templates: [] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
-    ),
-  )
+  /*
+    Three endpoints, three shapes. Nothing in a unit test may reach the network.
+
+    TWO orgs, deliberately: with one, the top bar's org control is a line of
+    text and the `<select>` that SPEC §8's org switching actually is never
+    renders — so neither the audit below nor the "every control has a real
+    label" assertion would ever see it. The shell is on every fixture, so this
+    puts the switcher under all of them.
+  */
+  stubApi({
+    "/auth/session": {
+      body: sessionBody([
+        { slug: "acme", name: "Acme" },
+        { slug: "beta-works", name: "Beta Works" },
+      ]),
+    },
+    "/projects": { body: { projects: [], page: { has_more: false } } },
+    "/templates": { body: { templates: [] } },
+  })
 })
 
 afterEach(() => {
@@ -262,6 +326,7 @@ afterEach(() => {
 describe.each(FIXTURES)("$name", (fixture) => {
   it("has no accessibility violations", async () => {
     mount(fixture)
+    await settle()
     const results = await audit()
 
     for (const id of executedIn(results)) executed.add(id)
@@ -276,7 +341,7 @@ describe.each(FIXTURES)("$name", (fixture) => {
     expect(results.testEngine.version).toBe(AXE_VERSION)
   })
 
-  it("has no duplicate element ids", () => {
+  it("has no duplicate element ids", async () => {
     // axe cannot: `duplicate-id` is deprecated in axe-core 4.13 — its tags
     // are `wcag2a-obsolete` and `deprecated`, neither of which this run
     // selects — and it ships `enabled: false`, so it appears in neither the
@@ -285,6 +350,7 @@ describe.each(FIXTURES)("$name", (fixture) => {
     // `#main` are outside it, and both resolve to the FIRST match in the
     // document, so a collision silently re-points them.
     mount(fixture)
+    await settle()
     const ids = [...document.body.querySelectorAll("[id]")].map((element) => element.id)
     expect(ids).toEqual([...new Set(ids)])
   })
@@ -358,7 +424,7 @@ describe("the audit itself", () => {
     ])
   })
 
-  it("covers every route SPEC §18 fixes, and nothing that is not one", () => {
+  it("covers every route the console has, and nothing that is not one", () => {
     // `apps/console/src/app/screens.test.tsx` holds the same twelve screens.
     // It is not imported: measured, importing a test module re-registers its
     // 38 tests under THIS file (84 tests became 123), so the shared thing is
@@ -369,17 +435,33 @@ describe("the audit itself", () => {
     const covered = FIXTURES.flatMap((fixture) =>
       fixture.route === undefined ? [] : [fixture.route],
     )
-    const fixed = [
-      routes.newProject,
-      ...projectNav("demo").map((item) => item.href),
-      ...settingsNav.map((item) => item.href),
-    ]
+    // EVERY value in the table, not a list of them. The list used to be spelled
+    // out here, and a list is exactly what a new route escapes: adding one to
+    // `routes` and to the filesystem satisfied every other check and left this
+    // assertion comparing two lists that both omitted it. Reading the object
+    // makes that impossible — a thirteenth route fails here until it has a
+    // fixture, which is the point: a screen nobody audits is a screen with no
+    // accessibility floor.
+    const fixed = Object.values(routes).map((route) =>
+      typeof route === "function" ? route("demo") : route,
+    )
     expect([...covered].sort()).toEqual([...fixed].sort())
+    // Anti-vacuity: `Object.values` of a module that failed to resolve is `[]`,
+    // and two empty lists are equal. The navs are the shape of the table rather
+    // than a second copy of it, so this also catches a route that exists but
+    // that no navigation can reach.
+    expect(fixed).toEqual(
+      expect.arrayContaining([
+        ...projectNav("demo").map((item) => item.href),
+        ...settingsNav.map((item) => item.href),
+      ]),
+    )
+    expect(fixed.length).toBeGreaterThanOrEqual(15)
   })
 })
 
 describe("what axe cannot answer", () => {
-  it("names every form control with a real label, never a placeholder", () => {
+  it("names every form control with a real label, never a placeholder", async () => {
     // axe cannot: its `label` rule is satisfied by `non-empty-placeholder`,
     // which is one of the checks in its `any` list. So a field whose ONLY
     // accessible name is a placeholder passes, and `label-title-only` does not
@@ -398,6 +480,10 @@ describe("what axe cannot answer", () => {
     for (const fixture of FIXTURES) {
       cleanup()
       mount(fixture)
+      // Settled, or the controls that only exist once a request has answered —
+      // the top bar's organisation `<select>`, every field behind a loaded
+      // screen — are never in the document when this looks.
+      await settle()
       const controls = [
         ...document.body.querySelectorAll<HTMLElement>("input, textarea, select"),
       ].filter((element) => element.getAttribute("type") !== "hidden")

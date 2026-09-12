@@ -86,3 +86,31 @@ describe("the console reaches the token layer", () => {
     expect(source).toContain('@import "./palette.css"')
   })
 })
+
+/**
+ * The other half of the seam, and the other way it fails silently.
+ *
+ * `--text-base` is 15px and the whole seven-step scale is derived from it, but
+ * Tailwind's preflight leaves `body` at the browser's own 16px. So every piece
+ * of text that does not spell out a `text-*` utility renders one step off the
+ * scale the design is built on — and nothing fails, because 16px beside 15px
+ * reads as a font choice rather than as a bug. The console sets it once, on
+ * `body`, where the token layer deliberately leaves it (that file styles no
+ * element at all beyond the focus ring).
+ */
+describe("the console sits on the base of the type scale", () => {
+  it.each(entryStylesheets)("%s sets body type from --text-base", (file) => {
+    const source = readFileSync(join(REPO_ROOT, file), "utf8")
+    const body = /\bbody\s*\{([^}]*)\}/.exec(source)?.[1] ?? ""
+    expect(
+      body,
+      `${file} imports the token layer but never opens a \`body\` rule. The page ground, the ` +
+        "ink and the base type size are the app's to set: the token layer styles no element.",
+    ).not.toBe("")
+    expect(
+      /font-size:\s*var\(--text-base\)/.test(body),
+      `${file} leaves body at the browser's 16px while --text-base is 15px. Everything that ` +
+        "does not name a text-* utility then renders one step off the scale, and looks fine.",
+    ).toBe(true)
+  })
+})

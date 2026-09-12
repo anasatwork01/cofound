@@ -21,6 +21,12 @@
       below are the real values, the components are drawn with them, and the
       contrast figures were computed rather than estimated. If a number here
       disagrees with the console, the console is wrong.
+
+      REVISED 2026-09-12 (task 0.14) for the warmer register described under
+      "Why the direction changed" below. The surface ramp, the three state
+      values and the radius scale all moved; the RULES that produced them did
+      not. Every figure in this file was recomputed from the values in the
+      :root block above with culori's wcagContrast — none was carried over.
     -->
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -39,28 +45,34 @@
          a component never names a colour, only a role.
          =================================================================== */
       :root {
-        /* --- raw: greens-greys -------------------------------------------
-           A single green-grey ramp at H≈131. Not a neutral grey and not a
-           blue-grey: a faint green cast reads as daylight rather than as
-           screen, and it is what keeps a mid-light ground from looking
-           dirty. There is no #ffffff anywhere in this system. */
-        --raw-grey-0: #f9fbf8; /* oklch(98.6% 0.004 134.8) */
-        --raw-grey-50: #e5e7e3; /* oklch(92.5% 0.006 128.5) */
-        --raw-grey-100: #d6d9d4; /* oklch(88.2% 0.007 132.4) */
-        --raw-grey-200: #cacdc8; /* oklch(84.5% 0.008 132.4) */
-        --raw-grey-500: #72766f; /* oklch(56.0% 0.012 131.4) */
-        --raw-grey-600: #5a5e56; /* oklch(47.6% 0.014 128.8) */
-        --raw-grey-900: #272c23; /* oklch(28.5% 0.018 131.2) */
+        /* --- raw: warm neutrals -------------------------------------------
+           A single warm ramp. The three surfaces sit at H 75–82 and the greys
+           that carry edges and muted ink run down to H 68, all at C ≤ 0.010 —
+           far too little colour to name, just enough to stop the ground
+           reading as screen-grey. Ink is the one step that breaks the hue:
+           #1e1e24 is C 0.011 at H 285, a faint cool cast, because a warm
+           near-black on a warm ground goes muddy rather than quiet.
+
+           The raised surface IS #ffffff. That is a change: the previous ramp
+           avoided pure white deliberately. See "Colour" below for what that
+           bought and what it cost. */
+        --raw-grey-0: #ffffff; /* oklch(100.0% 0.000 0.0) */
+        --raw-grey-50: #f9f7f4; /* oklch(97.7% 0.005 78.3) */
+        --raw-grey-100: #f1eeea; /* oklch(95.0% 0.006 75.4) */
+        --raw-grey-200: #e2ded7; /* oklch(90.2% 0.010 81.8) */
+        --raw-grey-500: #8c8883; /* oklch(62.9% 0.009 73.7) */
+        --raw-grey-600: #6d6a67; /* oklch(52.6% 0.006 67.7) */
+        --raw-grey-900: #1e1e24; /* oklch(23.8% 0.011 285.5) */
 
         /* --- raw: the three states --------------------------------------
            Hues are fixed by SPEC §18. The VALUES are anchored on contrast,
            not on lightness — see "How these were built" below. */
-        --raw-violet-600: #6c49af; /* oklch(49.6% 0.156 296.0) */
-        --raw-amber-600: #8a4f0a; /* oklch(48.7% 0.108  61.8) */
-        --raw-teal-600: #1a6768; /* oklch(47.0% 0.072 196.3) */
+        --raw-violet-600: #7a57c1; /* oklch(54.5% 0.160 295.9) */
+        --raw-amber-600: #9f5b02; /* oklch(53.8% 0.123 62.5) */
+        --raw-teal-600: #017779; /* oklch(51.6% 0.088 196.8) */
 
         --raw-violet-50: #f1edff; /* oklch(95.4% 0.024 296.1) */
-        --raw-amber-50: #ffecdd; /* oklch(95.4% 0.029  60.8) */
+        --raw-amber-50: #ffecde; /* oklch(95.5% 0.028 58.8) */
         --raw-teal-50: #daf7f7; /* oklch(95.5% 0.030 196.7) */
 
         /* --- semantic ---------------------------------------------------- */
@@ -110,13 +122,22 @@
 
         /* --- radius -------------------------------------------------------
            Radius encodes what a thing IS, not how new the design is:
-             0     instruments and data surfaces — you read these
-             sm    anything you operate — buttons, inputs, chips
-             md    anything that floats above the page — menus, dialogs
-           lg is declared because the contract has three; nothing uses it. */
-        --radius-sm: 0.1875rem; /* 3px */
-        --radius-md: 0.5rem; /* 8px */
-        --radius-lg: 0.75rem; /* 12px — declared, unused */
+             0     instruments and data surfaces — you read these. The gauge,
+                   its pips, the preview frame. Not a token: it is the ABSENCE
+                   of a radius, and a meter with rounded ends is unreadable at
+                   low fill.
+             sm    anything you operate — buttons, inputs, selects, chips
+             md    panels and cards — the things content sits inside
+             lg    anything that floats above the page — menus, dialogs, toasts
+
+           The scale moved up a step for the softer register (3/8/12 → 8/12/16)
+           and lg gained a job in the process, so all three rungs are now used.
+           The RULE did not move: what carries a radius, and why, is unchanged,
+           which is what kept the softening a token edit rather than a
+           component sweep. */
+        --radius-sm: 0.5rem; /* 8px */
+        --radius-md: 0.75rem; /* 12px */
+        --radius-lg: 1rem; /* 16px */
 
         --space-1: 0.25rem;
         --space-2: 0.5rem;
@@ -124,6 +145,7 @@
         --space-4: 1rem;
         --space-5: 1.25rem;
         --space-6: 1.5rem;
+        --space-7: 1.75rem;
         --space-8: 2rem;
       }
 
@@ -190,8 +212,9 @@
       .panel {
         background: var(--color-surface-raised);
         border: 1px solid var(--color-border);
-        padding: var(--space-5);
-        margin: var(--space-4) 0;
+        border-radius: var(--radius-md);
+        padding: var(--space-6);
+        margin: var(--space-5) 0;
       }
       table {
         border-collapse: collapse;
@@ -206,7 +229,7 @@
         border-bottom: 1px solid var(--color-border-strong);
       }
       td {
-        padding: var(--space-2) var(--space-3);
+        padding: var(--space-3);
         border-bottom: 1px solid var(--color-border);
         vertical-align: top;
       }
@@ -230,7 +253,7 @@
       /* --- focus: one ring, everywhere -------------------------------------
          2px ink at 2px offset. The offset gap shows the surface behind, which
          is what keeps it legible on a coloured button: the pair that actually
-         renders is the page ground against violet, 5.26:1. */
+         renders is the page ground against violet, 4.96:1. */
       :where(a, button, input, textarea, [tabindex]):focus-visible {
         outline: 2px solid var(--color-focus);
         outline-offset: 2px;
@@ -290,9 +313,11 @@
         background: var(--color-agent-soft);
       }
       .region {
-        padding: var(--space-3) var(--space-4);
+        padding: var(--space-4) var(--space-5);
         border-left: 2px solid var(--color-waiting);
+        border-radius: var(--radius-md);
         background: var(--color-waiting-soft);
+        margin: var(--space-4) 0;
       }
       .region-agent {
         border-left-color: var(--color-agent);
@@ -351,7 +376,7 @@
             wherever it appears — otherwise "hold" is two patterns, not one.
          3. NOTHING COLOURED IS DRAWN ON SPENT FILL. The hatch sits on unspent
             track only, so the pair that renders is violet on the track at
-            4.59:1 rather than violet on teal at 1.01:1.
+            4.58:1 rather than violet on teal at 1.01:1.
          4. IT DOES NOT MOVE. The hatch is a static gradient and numerals swap
             instantly. A hold that shimmered would pull the eye continuously
             while someone is trying to work. */
@@ -470,12 +495,15 @@
       }
 
       /* --- screens ---------------------------------------------------------
-         Three luminance planes carry the whole hierarchy: sunken, page,
-         raised. There is not a single box-shadow in this product. */
+         Hierarchy is carried by border and whitespace. The three surfaces —
+         sunken, page, raised — still differ, but only by 1.07–1.08:1 between
+         neighbours, which is a hint rather than a plane. There is still not a
+         single box-shadow in this product; see "What is not here". */
       .screen {
         border: 1px solid var(--color-border-strong);
+        border-radius: var(--radius-md);
         background: var(--color-surface);
-        margin: var(--space-4) 0 var(--space-6);
+        margin: var(--space-5) 0 var(--space-6);
         overflow: hidden;
       }
       .rail {
@@ -556,15 +584,90 @@
         <h1>Halyard console — approved mockup</h1>
         <p class="lede">
           The design system SPEC §3.1 refers to. Tokens are extracted from this file into
-          <code>packages/ui/src/tokens/</code>; the contrast figures below are computed, and
-          <code>tests/console/contrast.test.ts</code> asserts them on every build.
+          <code>packages/ui/src/tokens/</code>, and every contrast figure below was computed from
+          the <code>:root</code> block above rather than estimated.
         </p>
         <p class="note">
-          Authored 2026-09-12 for task L.5. The audience is a semi-technical founder watching an
-          agent work on their product and approving the things that spend money — which is SPEC §21
-          decision 9 answered as the specification itself assumed it.
+          Authored 2026-09-12 for task L.5, and revised the same day under task 0.14 for the warmer
+          register described in the next section. The audience is a semi-technical founder watching
+          an agent work on their product and approving the things that spend money — which is SPEC
+          §21 decision 9 answered as the specification itself assumed it.
+        </p>
+        <p class="note">
+          <strong>What is and is not checked.</strong>
+          <code>tests/console/contrast.test.ts</code> asserts the ratios in the token layer on every
+          build, so a value that cannot carry its text fails CI. It does not read this file: the
+          figures printed here are typed, and nothing currently fails if they drift from the tokens
+          they describe — which is exactly how the first version of this document came to be
+          describing a palette the console no longer had. Until a test parses this file, treat a
+          disagreement between the two as a reason to re-measure, not as a reading.
         </p>
       </header>
+
+      <h2>Why the direction changed</h2>
+      <p>
+        The first version of this document described a green-grey system on a deliberately mid-light
+        ground. On 2026-09-12 the direction changed: the brief was a
+        <strong>warmer, softer, roomier register</strong>, in the spirit of Base44. What follows is
+        what was taken from that reference, what was refused, and on what grounds — so that the next
+        person to reopen the question argues with the reasoning rather than with the taste.
+      </p>
+      <p>
+        <strong
+          >Base44's values were read off their shipped stylesheet rather than estimated from a
+          screenshot</strong
+        >, which is the only way a reference is usable as a measurement. What the comparison
+        actually justified was three things: surfaces warm rather than neutral, a page ground near
+        the top of the ramp rather than in the middle of it, and a radius scale one step up (3/8/12
+        → 8/12/16). Those are density and temperature decisions, and they are the whole of what
+        moved.
+      </p>
+      <h3>What was rejected, and why it is not a taste call</h3>
+      <p>
+        <strong>Base44's orange, <code>#ff6a00</code>, was not adopted.</strong> The reason is a
+        measurement:
+      </p>
+      <div class="panel">
+        <table>
+          <thead>
+            <tr>
+              <th>Pair</th>
+              <th class="num">Ratio</th>
+              <th>Verdict</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>White on <code>#ff6a00</code></td>
+              <td class="num">2.87</td>
+              <td>Fails SPEC §18's 4.5:1, and fails WCAG at any text size</td>
+            </tr>
+            <tr>
+              <td>Ink <code>#1e1e24</code> on <code>#ff6a00</code></td>
+              <td class="num">5.78</td>
+              <td>Passes — which is why Base44 themselves set dark text on it</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="note" style="margin: 0">
+          An orange state can only be built with dark ink. Violet and teal cannot: at the lightness
+          contrast-anchoring puts them, both carry white. So an orange state would be the one state
+          whose ink flips — and SPEC §18's binding clause is that the three are
+          <strong>&ldquo;one learned pattern, not three&rdquo;</strong>, used identically for an ads
+          approval, an incomplete Stripe onboarding and a DNS-pending domain. A state you read
+          differently from the other two is not the same pattern. The orange is refused by §18, not
+          by preference.
+        </p>
+      </div>
+      <p class="note">
+        <strong>If that trade is ever worth making, it is cheap to make.</strong> Adopting the
+        orange is a one-file change in <code>packages/ui/src/tokens/palette.css</code> — no
+        component moves, because no component names a colour. But it is a
+        <strong>specification change first</strong>: §18 has to stop requiring one treatment across
+        the three states, and <code>contrast.test.ts</code> has to learn that
+        <code>--color-waiting-ink</code> is dark while the other two are white. Change the spec,
+        then the token. Not the other way round.
+      </p>
 
       <h2>How these values were built</h2>
       <p>
@@ -577,9 +680,17 @@
       <p>
         So the three were built by <strong>anchoring contrast, not lightness</strong>. Each solid is
         placed at 4.6:1 against <code>grey-100</code>, the darkest surface any text sits on, and its
-        lightness is allowed to fall wherever that puts it. Pinning lightness instead is the obvious
-        move and it does not work: it is the same number in a space that does not predict contrast,
-        and the three drift apart by the only measure that matters.
+        lightness is allowed to fall wherever that puts it. They land at 4.58, 4.57 and 4.64.
+        Pinning lightness instead is the obvious move and it does not work: it is the same number in
+        a space that does not predict contrast, and the three drift apart by the only measure that
+        matters.
+      </p>
+      <p class="note">
+        This rule is what made the 2026-09-12 warming a re-derivation rather than a redesign. The
+        surfaces moved, so the anchor moved with them, and the three states were solved against the
+        new <code>grey-100</code> by the same procedure that produced the old ones. Nothing about
+        the method changed, which is why all 63 contrast assertions passed on the new values without
+        being touched.
       </p>
       <div class="panel">
         <table>
@@ -595,21 +706,25 @@
           <tbody>
             <tr>
               <td>Contrast anchored at 4.6:1 on <code>grey-100</code> — this system</td>
-              <td class="num">6.29</td>
-              <td class="num">6.30</td>
-              <td class="num">6.34</td>
-              <td class="num"><strong>0.05</strong></td>
+              <td class="num">5.30</td>
+              <td class="num">5.29</td>
+              <td class="num">5.36</td>
+              <td class="num"><strong>0.07</strong></td>
             </tr>
             <tr>
-              <td>Lightness pinned to three decimal places — rejected</td>
-              <td class="num" colspan="3">drifts</td>
-              <td class="num">0.90</td>
+              <td>Lightness pinned to one value, L 53.3% — rejected</td>
+              <td class="num">5.59</td>
+              <td class="num">5.39</td>
+              <td class="num">4.99</td>
+              <td class="num">0.60</td>
             </tr>
           </tbody>
         </table>
         <p class="note" style="margin: 0">
-          Near-white ink on each of the three solids. A 0.05 spread is &ldquo;one learned
-          pattern&rdquo; in its only measurable form.
+          White ink on each of the three solids. A <strong>0.07</strong> spread is &ldquo;one
+          learned pattern&rdquo; in its only measurable form; the rejected row is the same three
+          hues at the same chroma with lightness pinned to their mean, and it spreads
+          <strong>0.60</strong> — eight times as far, on exactly the pair a reader sees.
           <strong>If a state colour ever has to move</strong>
           — someone dislikes the amber, a hue gets rotated — re-anchor to 4.6:1 against
           <code>grey-100</code> and let lightness fall where it falls. Never re-pin lightness.
@@ -617,12 +732,46 @@
       </div>
 
       <h2>Colour</h2>
+      <p>
+        A single warm ramp carries every surface. The three surfaces sit at
+        <strong>H 75–82</strong> and the greys that carry edges and muted ink run down to H 68 — all
+        at chroma 0.010 or below, which is not enough colour to name and just enough to keep the
+        ground from reading as screen-grey. Ink is the deliberate exception at
+        <strong>H 285</strong>: a faint cool cast, because a warm near-black on a warm ground goes
+        muddy rather than quiet.
+      </p>
+      <p>
+        <strong>Hierarchy is carried by border and whitespace, not by luminance.</strong> That is a
+        real change of mechanism and it is worth stating plainly, because the previous ramp made the
+        opposite bet. It ran from L 98.6% to L 88.2% — 10.4 points — and put the page in the middle
+        of that span so three luminance planes could do the work of a shadow. This ramp runs from L
+        100% to L 95.0%, five points, with the page near the top at 97.7%. Adjacent surfaces are now
+        <strong>1.07:1</strong> (raised to page) and <strong>1.08:1</strong> (page to sunken) apart,
+        against 1.20 and 1.14 before. A separation that small is a hint, not a plane. So the
+        hairline does the work the luminance step used to do, and the space around a thing does the
+        rest.
+      </p>
       <p class="note">
-        A single green-grey ramp at H≈131 carries every surface. It is not a neutral grey and not a
-        blue-grey: the faint green reads as daylight rather than as screen. There is no
-        <code>#ffffff</code> in the system — the page ground is deliberately mid-light so that three
-        luminance planes can carry the whole hierarchy with no box-shadow anywhere, and ink lands at
-        11.5:1 rather than the 19:1 that halates across a long session.
+        Two claims the previous version of this document made are now false, and are retired rather
+        than quietly kept. <strong>There is <code>#ffffff</code> in this system</strong> — it is the
+        raised surface. And ink no longer lands at 11.47:1: on raised it is
+        <strong>16.58:1</strong>. The old argument was that a mid-light ground keeps ink below the
+        ~19:1 that halates across a long session, and 16.58 is a real move toward that glare, not a
+        free one. It is the price of the warmer, roomier register, paid knowingly, and it is
+        narrower than 16.58 on its own suggests: the ground a founder actually reads against is the
+        page at 15.51:1, not raised, because
+        <strong>no long-form reading happens on <code>#ffffff</code></strong> — body copy is capped
+        at 66ch inside cards and panels, and the one full-width raised surface is the 52px top bar,
+        which holds a wordmark and a gauge rather than prose. If long-session glare is ever
+        reported, the fix is to lower <code>grey-0</code> off pure white in
+        <code>palette.css</code>, which costs nothing else.
+      </p>
+      <p class="note">
+        The swatches below are drawn with <code>var(--raw-&hellip;)</code> rather than with a
+        literal, so a chip cannot show a colour the <code>:root</code> block above does not have.
+        The hex and OKLCH columns are typed, because they have to be readable in a pull request
+        diff; they are the one thing here that can go stale, and the figures in both tables were
+        regenerated from <code>:root</code> with culori on 2026-09-12.
       </p>
       <table>
         <thead>
@@ -636,91 +785,91 @@
         </thead>
         <tbody>
           <tr>
-            <td><span class="swatch" style="background: #f9fbf8"></span></td>
+            <td><span class="swatch" style="background: var(--raw-grey-0)"></span></td>
             <td><code>grey-0</code></td>
-            <td class="num">#f9fbf8</td>
-            <td class="num">98.6% .004 135</td>
+            <td class="num">#ffffff</td>
+            <td class="num">100.0% .000 &mdash;</td>
             <td>Raised surface, and the ink on all three solids</td>
           </tr>
           <tr>
-            <td><span class="swatch" style="background: #e5e7e3"></span></td>
+            <td><span class="swatch" style="background: var(--raw-grey-50)"></span></td>
             <td><code>grey-50</code></td>
-            <td class="num">#e5e7e3</td>
-            <td class="num">92.5% .006 129</td>
+            <td class="num">#f9f7f4</td>
+            <td class="num">97.7% .005 78</td>
             <td>Page ground</td>
           </tr>
           <tr>
-            <td><span class="swatch" style="background: #d6d9d4"></span></td>
+            <td><span class="swatch" style="background: var(--raw-grey-100)"></span></td>
             <td><code>grey-100</code></td>
-            <td class="num">#d6d9d4</td>
-            <td class="num">88.2% .007 132</td>
+            <td class="num">#f1eeea</td>
+            <td class="num">95.0% .006 75</td>
             <td>Sunken: gauge track, wells, the rail</td>
           </tr>
           <tr>
-            <td><span class="swatch" style="background: #cacdc8"></span></td>
+            <td><span class="swatch" style="background: var(--raw-grey-200)"></span></td>
             <td><code>grey-200</code></td>
-            <td class="num">#cacdc8</td>
-            <td class="num">84.5% .008 132</td>
-            <td>Hairline — a seam where one kind of content ends</td>
+            <td class="num">#e2ded7</td>
+            <td class="num">90.2% .010 82</td>
+            <td>Hairline &mdash; and, since the warming, the main carrier of hierarchy</td>
           </tr>
           <tr>
-            <td><span class="swatch" style="background: #72766f"></span></td>
+            <td><span class="swatch" style="background: var(--raw-grey-500)"></span></td>
             <td><code>grey-500</code></td>
-            <td class="num">#72766f</td>
-            <td class="num">56.0% .012 131</td>
+            <td class="num">#8c8883</td>
+            <td class="num">62.9% .009 74</td>
             <td>Control edge (SC 1.4.11), gauge graduations</td>
           </tr>
           <tr>
-            <td><span class="swatch" style="background: #5a5e56"></span></td>
+            <td><span class="swatch" style="background: var(--raw-grey-600)"></span></td>
             <td><code>grey-600</code></td>
-            <td class="num">#5a5e56</td>
-            <td class="num">47.6% .014 129</td>
+            <td class="num">#6d6a67</td>
+            <td class="num">52.6% .006 68</td>
             <td>Muted ink</td>
           </tr>
           <tr>
-            <td><span class="swatch" style="background: #272c23"></span></td>
+            <td><span class="swatch" style="background: var(--raw-grey-900)"></span></td>
             <td><code>grey-900</code></td>
-            <td class="num">#272c23</td>
-            <td class="num">28.5% .018 131</td>
-            <td>Ink, and the focus ring</td>
+            <td class="num">#1e1e24</td>
+            <td class="num">23.8% .011 285</td>
+            <td>Ink, and the focus ring. The one cool step</td>
           </tr>
           <tr>
-            <td><span class="swatch" style="background: #6c49af"></span></td>
+            <td><span class="swatch" style="background: var(--raw-violet-600)"></span></td>
             <td><code>violet-600</code></td>
-            <td class="num">#6c49af</td>
-            <td class="num">49.6% .156 296</td>
+            <td class="num">#7a57c1</td>
+            <td class="num">54.5% .160 296</td>
             <td>Agent-owned action</td>
           </tr>
           <tr>
-            <td><span class="swatch" style="background: #8a4f0a"></span></td>
+            <td><span class="swatch" style="background: var(--raw-amber-600)"></span></td>
             <td><code>amber-600</code></td>
-            <td class="num">#8a4f0a</td>
-            <td class="num">48.7% .108 62</td>
+            <td class="num">#9f5b02</td>
+            <td class="num">53.8% .123 62</td>
             <td>Waiting on you</td>
           </tr>
           <tr>
-            <td><span class="swatch" style="background: #1a6768"></span></td>
+            <td><span class="swatch" style="background: var(--raw-teal-600)"></span></td>
             <td><code>teal-600</code></td>
-            <td class="num">#1a6768</td>
-            <td class="num">47.0% .072 196</td>
+            <td class="num">#017779</td>
+            <td class="num">51.6% .088 197</td>
             <td>Live</td>
           </tr>
           <tr>
-            <td><span class="swatch" style="background: #f1edff"></span></td>
+            <td><span class="swatch" style="background: var(--raw-violet-50)"></span></td>
             <td><code>violet-50</code></td>
             <td class="num">#f1edff</td>
             <td class="num">95.4% .024 296</td>
-            <td>Agent tint — row bands and chips</td>
+            <td>Agent tint &mdash; row bands and chips</td>
           </tr>
           <tr>
-            <td><span class="swatch" style="background: #ffecdd"></span></td>
+            <td><span class="swatch" style="background: var(--raw-amber-50)"></span></td>
             <td><code>amber-50</code></td>
-            <td class="num">#ffecdd</td>
-            <td class="num">95.4% .029 61</td>
+            <td class="num">#ffecde</td>
+            <td class="num">95.5% .028 59</td>
             <td>Waiting tint</td>
           </tr>
           <tr>
-            <td><span class="swatch" style="background: #daf7f7"></span></td>
+            <td><span class="swatch" style="background: var(--raw-teal-50)"></span></td>
             <td><code>teal-50</code></td>
             <td class="num">#daf7f7</td>
             <td class="num">95.5% .030 197</td>
@@ -740,41 +889,65 @@
         </thead>
         <tbody>
           <tr>
-            <td>Near-white on violet / amber / teal</td>
-            <td class="num">6.29 · 6.30 · 6.34</td>
+            <td>White ink on violet / amber / teal</td>
+            <td class="num">5.30 · 5.29 · 5.36</td>
             <td class="num">4.5</td>
           </tr>
           <tr>
             <td>Ink on page / raised / sunken</td>
-            <td class="num">11.47 · 13.72 · 10.02</td>
+            <td class="num">15.51 · 16.58 · 14.34</td>
             <td class="num">4.5</td>
           </tr>
           <tr>
             <td>Muted ink on page / raised / sunken</td>
-            <td class="num">5.32 · 6.37 · 4.65</td>
+            <td class="num">5.03 · 5.37 · 4.65</td>
+            <td class="num">4.5</td>
+          </tr>
+          <tr>
+            <td>Each solid as text on page / raised</td>
+            <td class="num">4.96 · 4.94 · 5.01 / 5.30 · 5.29 · 5.36</td>
             <td class="num">4.5</td>
           </tr>
           <tr>
             <td>Each solid on its own tint</td>
-            <td class="num">5.70 · 5.71 · 5.85</td>
+            <td class="num">4.62 · 4.61 · 4.76</td>
+            <td class="num">4.5</td>
+          </tr>
+          <tr>
+            <td>Ink on each of the three tints</td>
+            <td class="num">14.45 · 14.45 · 14.71</td>
             <td class="num">4.5</td>
           </tr>
           <tr>
             <td>Control edge on raised / page / sunken</td>
-            <td class="num">4.45 · 3.72 · 3.25</td>
+            <td class="num">3.52 · 3.29 · 3.04</td>
             <td class="num">3.0</td>
           </tr>
           <tr>
             <td>Hold hatch on unspent track</td>
-            <td class="num">4.59</td>
+            <td class="num">4.58</td>
             <td class="num">3.0</td>
           </tr>
         </tbody>
       </table>
       <p class="note">
-        The tints are at L 95.4–95.5% so they read as a band on both the page and a raised panel
-        (1.08–1.10:1) while still carrying their own solid as text at 5.7:1. That is what lets a
-        tinted row band work anywhere rather than on raised surfaces only.
+        <strong
+          >Two of these are close to their floor and should be read as commitments, not as
+          slack.</strong
+        >
+        Each solid on its own tint fell from 5.70 to 4.62 when the ramp warmed, because the tints
+        stayed put while the solids moved to re-anchor. It clears 4.5:1 and nothing more, and it
+        fails from either side:
+        <strong>a solid may not be lightened and a tint may not be darkened</strong>, because both
+        close the same gap. Neither moves without re-measuring this pair. The control edge on sunken
+        is 3.04 against SC 1.4.11's 3.0 — a control sitting in a well is the tightest boundary in
+        the product, and <code>grey-500</code> may not move toward the surfaces at all.
+      </p>
+      <p class="note">
+        The tints are at L 95.4–95.5%, so against the page they are 1.05–1.07:1 and against a raised
+        panel 1.13–1.15:1. They read as a band on either ground while still carrying their own solid
+        as text, which is what lets a tinted row band work anywhere rather than on raised surfaces
+        only. Ink on a tint is 14.45:1 and up, so a band never needs its text recoloured.
       </p>
 
       <h2>Type</h2>
@@ -784,8 +957,10 @@
         scans amounts, durations, IDs and file paths at speed, and confusing
         <span class="mono">1 l I</span> or <span class="mono">0 O</span> here costs real money.
         Atkinson is the typeface engineered specifically to disambiguate those, and it is humanist
-        enough to keep a mid-grey instrument panel from reading cold. Drawing both voices from one
-        family means a sentence with an ID in it reads as one line rather than a paste.
+        enough that a screen full of meters and amounts reads as a workspace rather than as a
+        terminal — which matters more, not less, now that the ground is warm and the panels are
+        soft. Drawing both voices from one family means a sentence with an ID in it reads as one
+        line rather than a paste.
       </p>
       <p class="note">
         61 KB for the whole system, self-hosted: 33.2 KB for the variable 400–700 sans, 17.3 and
@@ -1087,6 +1262,7 @@
             <div class="state" style="margin-bottom: var(--space-3)">
               <span class="pip pip-live"></span> Preview
             </div>
+            <!-- square: the preview frame is a data surface, like the gauge -->
             <div
               style="
                 background: var(--color-surface-raised);
@@ -1195,8 +1371,14 @@
           pairs are measured, dark would ship unmeasured.
         </li>
         <li>
-          <strong>No box-shadow, anywhere.</strong> Depth is the three luminance planes. A shadow
-          would be a fourth mechanism for something three already do.
+          <strong>No box-shadow, anywhere.</strong> This one survived the warming but its reason did
+          not. It used to be that three luminance planes already carried depth, so a shadow would
+          have been a fourth mechanism for a solved problem. On a near-white ground the planes are
+          1.07–1.08:1 apart and no longer carry it, so the honest reason now is that
+          <strong>border and whitespace were chosen instead</strong>: a hairline states an edge at
+          an exact pixel, which a founder scanning rows of versions and amounts can parse faster
+          than a gradient, and it costs nothing to render or to reason about. A shadow is the
+          conventional move on this ground and it is still declined.
         </li>
         <li>
           <strong>No motion except in answer to an action.</strong> No entrances, no shimmer, no

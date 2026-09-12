@@ -79,21 +79,21 @@
   /* --- the three states -------------------------------------------------
      Solids carry near-white text. Tints are backgrounds for a chip or a row
      band, and carry their own solid as text at ~5.7:1. */
-  --raw-violet-600: #6c49af; /* oklch(49.6% 0.156 296.0) */
+  --raw-violet-600: #7a57c1; /* oklch(54.5% 0.160 295.9) */
   --raw-violet-50: #f1edff; /* oklch(95.4% 0.024 296.1) */
 
-  --raw-amber-600: #8a4f0a; /* oklch(48.7% 0.108  61.8) */
-  --raw-amber-50: #ffecdd; /* oklch(95.4% 0.029  60.8) */
+  --raw-amber-600: #9f5b02; /* oklch(53.8% 0.123 62.5) */
+  --raw-amber-50: #ffecde; /* oklch(95.5% 0.028 58.8) */
 
-  --raw-teal-600: #1a6768; /* oklch(47.0% 0.072 196.3) */
+  --raw-teal-600: #017779; /* oklch(51.6% 0.088 196.8) */
   --raw-teal-50: #daf7f7; /* oklch(95.5% 0.030 196.7) */
 
   /* --- the surface ramp -------------------------------------------------- */
-  --raw-grey-0: #f9fbf8; /* oklch(98.6% 0.004 134.8)  raised, and the ink on all three solids */
-  --raw-grey-50: #e5e7e3; /* oklch(92.5% 0.006 128.5)  page ground */
-  --raw-grey-100: #d6d9d4; /* oklch(88.2% 0.007 132.4)  sunken: gauge track, wells, the rail */
-  --raw-grey-200: #cacdc8; /* oklch(84.5% 0.008 132.4)  hairline */
-  --raw-grey-500: #72766f; /* oklch(56.0% 0.012 131.4)  control edge, gauge graduations */
-  --raw-grey-600: #5a5e56; /* oklch(47.6% 0.014 128.8)  muted ink */
-  --raw-grey-900: #272c23; /* oklch(28.5% 0.018 131.2)  ink, and the focus ring */
+  --raw-grey-0: #ffffff; /* oklch(100.0% 0.000 0.0)  raised, and the ink on all three solids */
+  --raw-grey-50: #f9f7f4; /* oklch(97.7% 0.005 78.3)  page ground */
+  --raw-grey-100: #f1eeea; /* oklch(95.0% 0.006 75.4)  sunken: wells, the gauge track */
+  --raw-grey-200: #e2ded7; /* oklch(90.2% 0.010 81.8)  hairline */
+  --raw-grey-500: #8c8883; /* oklch(62.9% 0.009 73.7)  control edge (SC 1.4.11), gauge graduations */
+  --raw-grey-600: #6d6a67; /* oklch(52.6% 0.006 67.7)  muted ink */
+  --raw-grey-900: #1e1e24; /* oklch(23.8% 0.011 285.5)  ink, and the focus ring */
 }

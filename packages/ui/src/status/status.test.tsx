@@ -55,4 +55,31 @@ describe("Status", () => {
     expect(container.querySelector("[aria-live]")).toBeNull()
     expect(container.querySelector("[role]")).toBeNull()
   })
+
+  it("carries the three marks the approved mockup draws, on the right states", () => {
+    // SPEC §3.1 makes `docs/mockup.html` the design system, and its `.pip`
+    // block fixes the alphabet: violet circle, amber triangle, teal square.
+    // The same three marks appear in the project rail, where they are learned
+    // before they are needed — so a badge drawing a different silhouette for
+    // the same state teaches two alphabets for SPEC §18's one pattern.
+    //
+    // This asserted only that the three differ from each other, which stayed
+    // green through a mapping that had `live` drawing the circle the mockup
+    // gives to `agent`, and `agent` drawing a diamond the mockup never draws.
+    const mark = (state: StatusState) => {
+      const { container, unmount } = render(<Status state={state} />)
+      const glyph = container.querySelector("svg")?.firstElementChild
+      const shape = glyph?.tagName.toLowerCase() ?? ""
+      // A `path` is only a triangle if it has three vertices and closes: the
+      // diamond this used to draw is the same tag with four. `H` counts — the
+      // triangle's base is a horizontal lineto.
+      const vertices = (glyph?.getAttribute("d") ?? "").match(/[MLHV]/g)?.length ?? 0
+      const closed = /Z$/.test(glyph?.getAttribute("d") ?? "")
+      unmount()
+      return shape === "path" ? `${shape}:${vertices}${closed ? ":closed" : ""}` : shape
+    }
+    expect(mark("agent")).toBe("circle")
+    expect(mark("waiting")).toBe("path:3:closed")
+    expect(mark("live")).toBe("rect")
+  })
 })

@@ -79,7 +79,10 @@ describe("TemplateGallery", () => {
     renderWithQuery(<TemplateGallery />)
 
     const alert = await screen.findByRole("alert")
-    expect(alert).toHaveTextContent("The templates did not load.")
+    // The server's own words, both halves. This used to read "The templates did
+    // not load." over a hard-coded "Check your connection, then try again." —
+    // the message thrown away, the fix replaced.
+    expect(alert).toHaveTextContent("Templates are not available.")
     expect(alert).toHaveTextContent("Try again in a moment.")
     expect(alert.textContent ?? "").not.toMatch(/sorry|apolog|oops/i)
     // SPEC §18 gives each of the three states exactly one meaning, and a
@@ -104,5 +107,42 @@ describe("TemplateGallery", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "storefront" })).toBeInTheDocument()
     })
+  })
+})
+
+describe("the fix the gallery shows", () => {
+  it("is the API's, even when the API's is nothing like a network problem", async () => {
+    // The regression that prompted the shared `ErrorNotice`. A clean 401 says
+    // "You are not signed in." / "Sign in and try again."; the gallery printed
+    // "Check your connection, then try again." over the top of it and sent the
+    // reader to look at their wifi.
+    respond(401, {
+      error: {
+        code: "unauthenticated",
+        message: "You are not signed in.",
+        fix: "Sign in and try again.",
+        retriable: false,
+      },
+    })
+    renderWithQuery(<TemplateGallery />)
+
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("You are not signed in.")
+    expect(alert).toHaveTextContent("Sign in and try again.")
+    expect(alert.textContent ?? "").not.toMatch(/connection/i)
+  })
+
+  it("is the console's only when there was no response to quote", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("Failed to fetch")
+      }),
+    )
+    renderWithQuery(<TemplateGallery />)
+
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("The request did not reach the server.")
+    expect(alert).toHaveTextContent("Check your connection, then try again.")
   })
 })

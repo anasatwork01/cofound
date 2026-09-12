@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
-import { TopBar } from "./top-bar"
+import { TopBar, type TopBarProps } from "./top-bar"
 
 describe("TopBar", () => {
   it("is a banner landmark carrying the mark and the gauge", () => {
@@ -70,5 +70,29 @@ describe("TopBar", () => {
     expect(screen.getByRole("button", { name: "Northwind / storefront" })).toBeTruthy()
     // The slot replaces the text; the bar does not render both.
     expect(screen.queryByText("Northwind", { selector: "span" })).toBeNull()
+  })
+
+  it("is one fixed height, whatever the gauge is currently saying", () => {
+    // SPEC §18's persistent chrome. The credit gauge's tallest state adds a
+    // "Running low" chip to its second row, and a bar sized by its content
+    // would grow by that chip's height — shoving every screen down at the
+    // moment the user is reading the thing that caused it.
+    //
+    // So the height is declared, not derived: one `h-*`, no `min-h-*` and no
+    // vertical padding for the content to push against.
+    const barFor = (credits?: TopBarProps["credits"]) => {
+      const { container, unmount } = render(<TopBar {...(credits ? { credits } : {})} />)
+      const className = container.querySelector("header")?.className ?? ""
+      unmount()
+      return className.split(/\s+/)
+    }
+    const quiet = barFor()
+    const low = barFor({
+      build: { kind: "measured", used: 1200, allowance: 4000, hold: 40 },
+      runtime: { kind: "measured", used: 3900, allowance: 4000 },
+    })
+    expect(low).toEqual(quiet)
+    expect(quiet.filter((token) => /^h-/.test(token))).toHaveLength(1)
+    expect(quiet.filter((token) => /^(min-h-|max-h-|py-|p-)/.test(token))).toEqual([])
   })
 })

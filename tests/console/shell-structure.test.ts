@@ -54,6 +54,32 @@ const SPEC_18_ROUTES = [
 ]
 
 /**
+ * Routes SPEC §18 does not list, and the argument for each (task 0.14).
+ *
+ * This list is deliberately separate from the one above rather than merged into
+ * it. §18's table is the contract; these are additions, and keeping them apart
+ * means an edit that quietly DROPS a §18 screen cannot be hidden by an addition
+ * taking its place in a single flat count. `apps/console/src/lib/routes.ts`
+ * carries the full reasoning; the one-liners here are so a reader of this file
+ * knows why the filesystem has more in it than §18 does.
+ *
+ * Nothing may be added here casually: a new entry is a change to the product's
+ * route table and belongs in a task that says so.
+ */
+const ADDED_ROUTES = [
+  // The door. Every screen §18 lists assumes you are already through it.
+  "/signin",
+  // Not a screen, and not our spelling: `services/api/internal/auth/magiclink.go`
+  // builds every emailed link as CONSOLE_ORIGIN + "/auth/callback?token=...".
+  "/auth/callback",
+  // Creating your first org. It cannot live under /settings/*, which is scoped
+  // to an org you are already in.
+  "/orgs/new",
+]
+
+const ALL_ROUTES = [...SPEC_18_ROUTES, ...ADDED_ROUTES]
+
+/**
  * The complete set of semantic names the token contract defines. Written out
  * rather than read from `tokens.css`, so a token quietly renamed there fails
  * here instead of silently redefining what the console is allowed to say.
@@ -138,8 +164,26 @@ describe("SPEC §18 route table", () => {
   const pages = ALL_FILES.filter((path) => path.endsWith(`${"/"}page.tsx`))
   const routes = pages.map(routeOf).sort()
 
-  it("has a screen for every route, and no route SPEC §18 does not list", () => {
-    expect(routes).toEqual([...SPEC_18_ROUTES].sort())
+  it("has a screen for every route, and no route that is not on one of the two lists", () => {
+    expect(routes).toEqual([...ALL_ROUTES].sort())
+  })
+
+  it("still has all twelve of SPEC §18's own screens", () => {
+    // Separate from the assertion above on purpose: that one compares a total,
+    // and a total can stay right while a §18 screen is deleted and an addition
+    // takes its slot.
+    expect(SPEC_18_ROUTES.filter((route) => !routes.includes(route))).toEqual([])
+  })
+
+  it("declares every static route in the route table the app reads", () => {
+    // `@/lib/routes` is the module the navigation, the pages and the redirects
+    // all read. A directory added under `app/` without a line there is a screen
+    // nothing can link to, which is not a compile error and not a visible one.
+    const table = read(join(CONSOLE_SRC, "lib", "routes.ts"))
+    const missing = ALL_ROUTES.filter(
+      (route) => !route.includes("[") && !table.includes(`"${route}"`),
+    )
+    expect(missing).toEqual([])
   })
 
   it("puts the project screens under one layout, and settings under another", () => {
@@ -151,7 +195,12 @@ describe("SPEC §18 route table", () => {
     const rootLayout = read(join(APP, "layout.tsx"))
     expect(rootLayout).toContain('import "./globals.css"')
     expect(rootLayout).toContain("@halyard/ui")
-    expect(rootLayout).toContain("<TopBar />")
+    // Mounted WITH the org switcher in the slot `top-bar.tsx` left open for it
+    // (SPEC §8: "org switching in the project picker"). Asserted as two facts
+    // rather than one literal, so reformatting the JSX does not fail the test
+    // and removing the switcher does.
+    expect(rootLayout).toMatch(/<TopBar\b/)
+    expect(rootLayout).toContain("contextSlot={<ConsoleContext />}")
     // SPEC §18 wants aria-live for toasts, and a live region only announces
     // what is put into a region that already existed.
     expect(rootLayout).toContain('aria-live="polite"')

@@ -3,6 +3,8 @@ import { expect, test } from "@playwright/test"
 import type { Page } from "@playwright/test"
 import type { AxeResults, Result } from "axe-core"
 
+import { routes } from "../../apps/console/src/lib/routes"
+
 /**
  * SPEC §18, accessibility: "Keyboard-navigable throughout, visible focus rings,
  * `aria-live` for streaming regions and toasts, reduced-motion respected, 4.5:1
@@ -30,31 +32,50 @@ import type { AxeResults, Result } from "axe-core"
  */
 
 /**
- * Copied from SPEC §18's route table, verbatim, in its order.
+ * DERIVED from `@/lib/routes`, not copied from it.
  *
- * `tests/console/shell-structure.test.ts` already asserts that this table and
- * the filesystem agree; it is repeated here because this file has to name a
- * concrete URL for each one, and a route added to §18 without a line here would
- * otherwise go unscanned.
+ * This list used to be hand-written, and the comment above it claimed that
+ * `tests/console/shell-structure.test.ts` made that safe. It did not: that test
+ * holds the route TABLE against the FILESYSTEM, and this file is neither. A
+ * route added to both of those passed every check in the repository and was
+ * simply never scanned by axe — silently, because a list that is not missing
+ * anything and a list that is never compared look identical in a green run.
+ *
+ * So the table is the source. Every value in `routes` becomes a scanned URL,
+ * function-valued entries are called with a demo slug, and a new route is
+ * scanned the moment it is declared — or fails here, which is the same
+ * protection arriving earlier.
  */
 const PROJECT = "demo-project"
 
-const ROUTES: ReadonlyArray<{ readonly name: string; readonly path: string }> = [
-  // §18: "redirect to last project or /new". Scanning it proves the redirect
-  // terminates somewhere that passes, which is what a signed-in user hits first.
-  { name: "/ (redirects to /new)", path: "/" },
-  { name: "/new", path: "/new" },
-  { name: "/p/[project]", path: `/p/${PROJECT}` },
-  { name: "/p/[project]/files", path: `/p/${PROJECT}/files` },
-  { name: "/p/[project]/history", path: `/p/${PROJECT}/history` },
-  { name: "/p/[project]/features", path: `/p/${PROJECT}/features` },
-  { name: "/p/[project]/ship", path: `/p/${PROJECT}/ship` },
-  { name: "/p/[project]/ads", path: `/p/${PROJECT}/ads` },
-  { name: "/p/[project]/search", path: `/p/${PROJECT}/search` },
-  { name: "/settings/credits", path: "/settings/credits" },
-  { name: "/settings/team", path: "/settings/team" },
-  { name: "/settings/connections", path: "/settings/connections" },
-]
+/**
+ * The one thing a route value cannot carry: a query string.
+ *
+ * `/auth/callback` is the arrival that stands still only when it has a reason
+ * code — bare, it redirects as soon as its effect runs, and scanning a document
+ * on its way somewhere else scans nothing.
+ */
+const QUERY: Readonly<Record<string, string>> = {
+  "/auth/callback": "?error=declined",
+}
+
+const ROUTES: ReadonlyArray<{ readonly name: string; readonly path: string }> = Object.entries(
+  routes,
+).map(([key, value]) => {
+  const path = typeof value === "function" ? value(PROJECT) : value
+  return { name: `${key} (${path})`, path: `${path}${QUERY[path] ?? ""}` }
+})
+
+/**
+ * A derived list can go empty without anyone noticing — an import that resolves
+ * to `{}` yields zero routes and a suite that passes by scanning nothing. This
+ * is the same anti-vacuity floor the rest of this file applies to axe's rules.
+ */
+test("every route in the console's route table is scanned", () => {
+  expect(ROUTES.length).toBeGreaterThanOrEqual(15)
+  expect(ROUTES.map((route) => route.path)).toContain(`/p/${PROJECT}`)
+  expect(new Set(ROUTES.map((route) => route.path)).size).toBe(ROUTES.length)
+})
 
 /**
  * `wcag22aa` is in this list for exactly one rule: `target-size`.
