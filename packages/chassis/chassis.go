@@ -47,6 +47,17 @@ type Service struct {
 	// boot reports the union of chassis and service problems.
 	Bind func(l *config.Loader)
 
+	// CORSOrigin names the single browser origin this service answers, and is
+	// called AFTER Bind has resolved (step 1) and before the router is built
+	// (step 5) — so a service can return a value it bound itself, such as api's
+	// CONSOLE_ORIGIN, without that value being duplicated into a second
+	// environment variable.
+	//
+	// Returning "" leaves CORS off entirely, which is the right answer for
+	// gitd, aigw and mcp: no browser talks to them, and a service that emits no
+	// Access-Control header cannot be reached from a page by construction.
+	CORSOrigin func() string
+
 	// Setup builds dependencies and mounts routes. It runs after config,
 	// logging, tracing and the router exist, and before the listener opens.
 	// The returned Closer runs after the drain, so a pool closes only once no
@@ -238,6 +249,10 @@ func New(ctx context.Context, o Options) (*Chassis, error) {
 	ew := httpx.NewErrorWriter(log)
 
 	// 5. router
+	var corsOrigin string
+	if svc.CORSOrigin != nil {
+		corsOrigin = svc.CORSOrigin()
+	}
 	mux := httpx.Router(httpx.RouterConfig{
 		Service: cfg.Service, Env: string(cfg.Env), Version: cfg.Version, Commit: cfg.Commit,
 		Log: log, Errors: ew, Health: reg, Drain: drain,
@@ -250,6 +265,7 @@ func New(ctx context.Context, o Options) (*Chassis, error) {
 		MaxBodyBytes:    cfg.HTTP.MaxBodyBytes,
 		ReadinessDetail: cfg.Readiness.Detail,
 		PanicHook:       panicHook,
+		CORS:            httpx.CORSConfig{AllowOrigin: corsOrigin},
 	})
 
 	c := &Chassis{

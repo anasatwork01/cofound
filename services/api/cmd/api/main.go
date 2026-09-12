@@ -33,6 +33,16 @@ func main() {
 		Bind:    api.Bind,
 		Setup:   api.Setup,
 		Probes:  api.Probes,
+		// The console is a separate origin from the api — locally (3000 vs
+		// 8080) and in production — and SPEC §8 puts the session in an httpOnly
+		// cookie, so every console fetch is credentialed and cross-origin.
+		// Without this the browser blocks every request before it is sent, which
+		// is exactly what phase 0's acceptance criterion ran into.
+		//
+		// CONSOLE_ORIGIN, not a second variable: it is already required config,
+		// already the origin every sign-in link is built from, and two vars for
+		// one value is two things to get out of step.
+		CORSOrigin: func() string { return api.Config.Config().ConsoleOrigin },
 		// This one line opts api's binary into the OTLP exporter's ~65 modules
 		// and ~10MB. gitd, aigw and mcp choose for themselves.
 		Exporter: otlp.Factory,
