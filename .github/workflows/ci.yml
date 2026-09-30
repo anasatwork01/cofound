@@ -80,7 +80,7 @@ jobs:
           fetch-depth: 1
       - id: tv
         run: ./scripts/tool-versions.sh >> "$GITHUB_OUTPUT"
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           python-version: ${{ steps.tv.outputs.python }}
           enable-cache: true
@@ -273,7 +273,7 @@ jobs:
         with:
           node-version: ${{ steps.tv.outputs.nodejs }}
           cache: pnpm
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           python-version: ${{ steps.tv.outputs.python }}
           enable-cache: true
@@ -335,7 +335,7 @@ jobs:
         with:
           go-version: ${{ steps.tv.outputs.golang }}
           cache-dependency-path: "**/go.sum"
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           python-version: ${{ steps.tv.outputs.python }}
           enable-cache: true
